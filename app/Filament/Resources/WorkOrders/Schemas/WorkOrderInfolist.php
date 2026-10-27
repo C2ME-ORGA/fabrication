@@ -4,7 +4,9 @@ namespace App\Filament\Resources\WorkOrders\Schemas;
 
 use App\Filament\Resources\Jobs\JobResource;
 use App\Models\WorkOrder;
+use App\Services\DocumentApplicabilityService;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Schemas\Components\Html;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
@@ -75,6 +77,21 @@ class WorkOrderInfolist
                             ->label('Créé le')
                             ->dateTime('d/m/Y H:i'),
                     ]),
+                Section::make('Documents techniques')
+                    ->description('Versions approuvées applicables, références figées à la libération et remises en revue explicites.')
+                    ->schema([
+                        Html::make(function (WorkOrder $record): string {
+                            $applicability = app(DocumentApplicabilityService::class);
+
+                            return view('filament.work-orders.documents', [
+                                'workOrder' => $record,
+                                'applicableDocuments' => $applicability->applicableDocumentsFor($record),
+                                'snapshots' => $applicability->snapshotsWithImpact($record),
+                                'releaseSnapshots' => $applicability->releaseSnapshotsFor($record),
+                            ])->render();
+                        }),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 }

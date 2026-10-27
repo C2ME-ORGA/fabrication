@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'job_id',
@@ -61,6 +62,26 @@ class WorkOrder extends Model
     public function job(): BelongsTo
     {
         return $this->belongsTo(Job::class);
+    }
+
+    /**
+     * Documents attached directly to this work order.
+     *
+     * @return HasMany<Document, $this>
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class);
+    }
+
+    /**
+     * Frozen document references captured at release and re-review time.
+     *
+     * @return HasMany<WorkOrderDocumentSnapshot, $this>
+     */
+    public function documentSnapshots(): HasMany
+    {
+        return $this->hasMany(WorkOrderDocumentSnapshot::class)->latest('captured_at');
     }
 
     /**

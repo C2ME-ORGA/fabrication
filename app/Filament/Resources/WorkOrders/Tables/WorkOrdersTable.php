@@ -5,6 +5,7 @@ namespace App\Filament\Resources\WorkOrders\Tables;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
 use App\Filament\Resources\Jobs\JobResource;
+use App\Filament\Resources\WorkOrders\Actions\WorkOrderDocumentActions;
 use App\Models\WorkOrder;
 use App\Services\WorkOrderService;
 use Filament\Actions\Action;
@@ -82,6 +83,7 @@ class WorkOrdersTable
                 ViewAction::make(),
                 EditAction::make(),
                 ...self::transitionActions(),
+                WorkOrderDocumentActions::reReviewDocuments(),
                 DeleteAction::make()
                     ->requiresConfirmation()
                     ->visible(fn (WorkOrder $record): bool => (bool) auth()->user()?->can('delete', $record))

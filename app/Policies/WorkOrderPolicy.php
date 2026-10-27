@@ -36,7 +36,23 @@ class WorkOrderPolicy
      */
     public function delete(User $user, WorkOrder $workOrder): bool
     {
-        return $user->isAdmin() && $workOrder->status === WorkOrderStatus::Draft;
+        return $user->isAdmin()
+            && $workOrder->status === WorkOrderStatus::Draft
+            && $workOrder->documents()->doesntExist()
+            && $workOrder->documentSnapshots()->doesntExist();
+    }
+
+    /**
+     * Explicit documentary re-review for a released work order after a new
+     * approved revision. Completed/cancelled OFs are frozen.
+     */
+    public function reReviewDocuments(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->isAdmin() && in_array($workOrder->status, [
+            WorkOrderStatus::Released,
+            WorkOrderStatus::InProgress,
+            WorkOrderStatus::QualityCheck,
+        ], true);
     }
 
     /**

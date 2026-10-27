@@ -27,6 +27,7 @@ class WorkOrderService
 {
     public function __construct(
         protected WorkOrderNumberGenerator $numbers,
+        protected DocumentSnapshotService $documentSnapshots,
     ) {}
 
     /**
@@ -139,6 +140,10 @@ class WorkOrderService
 
                 $locked->released_by = $actor?->getKey() ?? Auth::id();
                 $locked->released_at = now();
+
+                // Freeze the approved document versions applicable at release.
+                // The snapshot rows are written in this same transaction.
+                $this->documentSnapshots->captureForRelease($locked, $actor);
             }
 
             if ($target === WorkOrderStatus::InProgress && $locked->actual_start_at === null) {
@@ -168,6 +173,13 @@ class WorkOrderService
                 $this->fail(
                     'status',
                     'Seul un ordre de fabrication au statut « Brouillon » peut être supprimé.',
+                );
+            }
+
+            if ($locked->documents()->exists() || $locked->documentSnapshots()->exists()) {
+                $this->fail(
+                    'status',
+                    'Un ordre de fabrication rattaché à des documents ou à des références documentaires ne peut pas être supprimé.',
                 );
             }
 

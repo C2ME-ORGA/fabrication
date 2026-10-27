@@ -6,6 +6,7 @@ use App\Filament\Resources\Jobs\Pages\CreateJob;
 use App\Filament\Resources\Jobs\Pages\EditJob;
 use App\Filament\Resources\Jobs\Pages\ListJobs;
 use App\Filament\Resources\Jobs\Pages\ViewJob;
+use App\Filament\Resources\Jobs\RelationManagers\DocumentsRelationManager;
 use App\Filament\Resources\Jobs\RelationManagers\WorkOrdersRelationManager;
 use App\Filament\Resources\Jobs\Schemas\JobForm;
 use App\Filament\Resources\Jobs\Schemas\JobInfolist;
@@ -53,6 +54,7 @@ class JobResource extends Resource
     {
         return [
             WorkOrdersRelationManager::class,
+            DocumentsRelationManager::class,
         ];
     }
 

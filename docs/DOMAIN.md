@@ -1,6 +1,6 @@
 # Affaires et ordres de fabrication — socle fonctionnel
 
-Ce document décrit le premier socle : affaires (`jobs`), ordres de fabrication (`work_orders`), numérotation, statuts et règles métier.
+Ce document décrit le socle Affaires / Ordres de fabrication et le module Documents techniques : modèle de données, numérotation, statuts, règles métier, stockage et traçabilité.
 
 ## Modèle de données
 
@@ -107,6 +107,83 @@ Toutes les mutations passent par `App\Services\WorkOrderService` :
 - `planned_end_at` ne peut pas précéder `planned_start_at` ;
 - les transitions invalides et les modifications d'un OF figé lèvent une `ValidationException` ;
 - l'affaire est verrouillée (`lockForUpdate`) pendant la création pour éviter qu'elle soit clôturée concurremment.
+
+## Module Documents techniques
+
+### Modèle
+
+- **`documents`** : document métier (affaire et/ou OF), `category`, `title`, `reference`, `description`, `status` (`active` / `archived`), `current_version_id`, `created_by`.
+- **`document_versions`** : un dépôt = une ligne immuable. L'indice métier (`revision`) est distinct de `version_number`, entier monotone par document. Unicité `(document_id, revision)` et `(document_id, version_number)`.
+- **`work_order_document_snapshots`** : instantané des versions approuvées applicables, avec motif `release` ou `re_review`, validateur/date de validation, auteur et date du figeage. L'historique n'est jamais écrasé : une remise en revue ajoute des lignes.
+- **`document_audit_logs`** : journal des actions sensibles (document, version, OF, utilisateur, date, commentaire, métadonnées).
+
+### Rattachement
+
+Un document doit être rattaché à une affaire, à un OF, ou aux deux. Si les deux sont renseignés, l'OF doit appartenir à l'affaire. Si seul l'OF est renseigné, l'affaire est retrouvée par la relation de l'OF. L'association ne peut plus être modifiée dès qu'une version existe.
+
+### Indices et version courante
+
+- Le premier indice proposé est `A`, puis `B`, `C`… ; les indices numériques (`01`, `02`) et composés (`A01`, `A02`) sont acceptés.
+- Un indice ne peut pas être réutilisé pour un même document.
+- `documents.current_version_id` pointe vers la **dernière version téléversée**, quel que soit son statut (brouillon, en attente, refusée…).
+- La **version applicable** à un OF est la dernière version `approved` (`latestApprovedVersion`), jamais déduite d'un tri alphabétique.
+
+### Statuts de version et transitions
+
+| Statut | Libellé |
+| --- | --- |
+| `draft` | Brouillon |
+| `pending_validation` | En attente de validation |
+| `approved` | Validée |
+| `rejected` | Refusée |
+| `superseded` | Remplacée |
+
+Transitions :
+
+| Depuis | Vers |
+| --- | --- |
+| draft | pending_validation |
+| pending_validation | approved, rejected |
+| approved | superseded (automatique lors de l'approbation d'une version plus récente) |
+| rejected | — |
+| superseded | — |
+
+Un dépôt n'est jamais approuvé automatiquement. L'approbation enregistre le validateur, la date et le commentaire. Une version approuvée ne peut pas être modifiée en place : il faut une nouvelle version. Une version plus ancienne ne peut pas être approuvée si une version plus récente l'est déjà.
+
+### Application à un OF
+
+Sont applicables à un OF :
+
+1. les documents rattachés directement à cet OF ;
+2. les documents rattachés à l'affaire sans OF.
+
+Les documents rattachés à un autre OF de la même affaire sont exclus. Les documents archivés sont exclus.
+
+À la libération d'un OF (`WorkOrderService::transitionTo(..., Released)`), les dernières versions approuvées applicables sont figées dans `work_order_document_snapshots` dans la même transaction que la libération. Les versions en attente ou refusées ne sont jamais utilisées. Un OF libéré sans document reste libérable (comportement historique conservé) ; l'obligation de documents obligatoires reste à définir métier.
+
+Une nouvelle version approuvée après libération :
+
+- ne modifie aucune référence figée ;
+- est signalée dans la fiche document (OF libérés utilisant une révision antérieure) et par une notification à l'approbation ;
+- ne change jamais automatiquement la référence d'un OF.
+
+La remise en revue est une action explicite et autorisée sur un OF `released`, `in_progress` ou `quality_check` : elle ajoute des snapshots `re_review` avec motif, sans supprimer les snapshots `release`.
+
+### Stockage et sécurité
+
+- Disque privé `documents` : `storage/app/private/documents`, jamais servi directement depuis `public/`.
+- Nom de fichier généré (`UUID.extension`) ; le nom d'origine n'est qu'une métadonnée.
+- Limite configurable `DOCUMENTS_MAX_SIZE_KB` (50 Mo par défaut).
+- Extensions et MIME contrôlés ; le MIME est détecté sur le contenu.
+- SHA-256 calculé après stockage.
+- Téléchargement par route authentifiée + policy ; un utilisateur non administrateur reçoit `403`.
+- Les fichiers ne sont jamais écrasés ; les anciennes versions restent téléchargeables.
+- Si la transaction de base échoue après l'écriture du fichier, le nouveau fichier est supprimé. Les anciens fichiers ne sont jamais supprimés par un dépôt.
+- Commande de maintenance `documents:find-orphans [--delete]` pour les fichiers présents sur le disque mais non référencés.
+
+### Traçabilité
+
+`document_audit_logs` couvre : création/modification/archivage du document, dépôt, soumission, approbation, refus, remplacement, figeage à la libération, remise en revue et téléchargement. Chaque ligne conserve l'utilisateur, la date, la version, l'OF et le commentaire éventuel.
 
 ## Administration Filament
 

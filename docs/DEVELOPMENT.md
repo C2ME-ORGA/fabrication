@@ -45,6 +45,34 @@ La file d'attente `database` utilise la table `queue_jobs` : la table `jobs` est
 
 Le détail du modèle de données, de la numérotation et des transitions d'OF est documenté dans [DOMAIN.md](DOMAIN.md).
 
+## Documents techniques — stockage et maintenance
+
+- Les fichiers sont stockés sur le disque privé `documents`, racine `storage/app/private/documents` (hors `public/`).
+- Limite par défaut : 50 Mo (`DOCUMENTS_MAX_SIZE_KB=51200`).
+- Extensions acceptées : PDF, DXF, DWG, XLSX, CSV, DOCX, PNG, JPG/JPEG, TIF/TIFF. Le MIME réel est contrôlé par `fileinfo` ; un fichier dont le contenu ne correspond pas à l'extension est refusé.
+- Le nom d'origine est conservé à titre informatif uniquement ; le chemin est généré côté serveur (`documents/{document_id}/{uuid}.{extension}`).
+- Le SHA-256 est calculé après stockage et enregistré avec la version.
+- Les téléchargements passent par la route nommée `documents.versions.download`, protégée par l'authentification Filament et la policy de version.
+- Les fichiers déjà stockés ne sont jamais écrasés : une correction crée une nouvelle version.
+
+Maintenance :
+
+```powershell
+php artisan documents:find-orphans          # liste les fichiers non référencés
+php artisan documents:find-orphans --delete # les supprime après vérification
+```
+
+Sauvegarde : sauvegarder `storage/app/private/documents` avec la base de données. La base contient les métadonnées et les références figées ; le disque contient les fichiers. Les deux doivent être restaurés ensemble.
+
+Tests des documents :
+
+```powershell
+php artisan test --filter=Document
+vendor/bin/phpunit -c phpunit.mysql.xml
+```
+
+La suite MySQL vérifie le verrouillage de la ligne `documents` pendant la création concurrente de versions.
+
 ## Conventions
 - Toute mutation métier importante passe par une action/service testable.
 - Les transitions d'OF sont contrôlées côté serveur et couvertes par des tests.

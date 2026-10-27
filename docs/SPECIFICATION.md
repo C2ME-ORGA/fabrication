@@ -30,11 +30,12 @@ Le dépôt était vide lors de la rédaction. Ce fichier décrit donc l'architec
 - created_by, released_by, released_at, notes
 - timestamps
 
-### Documents (documents)
-- id, job_id, work_order_id nullable, category (quote / assembly_plan / detail_plan / supply_list / cutting_plan / welding / quality / shipping / other)
-- original_name, storage_path, mime_type, size_bytes, revision, uploaded_by
-- status (current / superseded / rejected), notes, timestamps
-- Politique : conserver l'historique des indices ; ne jamais remplacer silencieusement un plan déjà utilisé dans un OF libéré.
+### Documents (documents, document_versions)
+- `documents` : document logique rattaché à une affaire et/ou à un OF, catégorie, titre, référence, statut (`active` / `archived`), `current_version_id`, `created_by`.
+- `document_versions` : une ligne par dépôt, `revision` métier (A, B, 01, A01…), `version_number` entier monotone, fichier privé (`storage_disk`, `storage_path`, nom d'origine informatif), MIME, extension, taille, SHA-256, statut (`draft` / `pending_validation` / `approved` / `rejected` / `superseded`), auteur du dépôt et de la validation.
+- `work_order_document_snapshots` : versions approuvées figées à la libération d'un OF, avec motif (`release` / `re_review`), validateur, date de validation et auteur du figeage.
+- `document_audit_logs` : journal des dépôts, validations, refus, remplacements, archivages, figeages, remises en revue et téléchargements.
+- Politique : conserver l'historique des indices ; ne jamais remplacer silencieusement un plan déjà utilisé dans un OF libéré. Une nouvelle révision après libération est signalée et nécessite une remise en revue explicite.
 
 ### Pièces / repères (work_order_items)
 - id, work_order_id, mark (repère unique au sein d'un OF), designation, profile, steel_grade
@@ -59,8 +60,8 @@ Le dépôt était vide lors de la rédaction. Ce fichier décrit donc l'architec
 
 ### Sécurité et traçabilité
 - utilisateurs ; rôles/permis ; journal d'événements pour libération d'OF, changement d'indice, clôture qualité et expédition.
-- Fichiers servis par contrôleur autorisé, pas par URL publique prévisible.
-- Valider les fichiers (taille/MIME/extension), stocker hors public si possible et journaliser les actions sensibles.
+- Fichiers stockés sur un disque privé hors `public/`, servis par une route Laravel authentifiée et autorisée ; aucune URL publique directe.
+- Valider les fichiers (taille/MIME/extension), calculer le SHA-256, stocker hors public et journaliser les actions sensibles.
 
 ## Règles métier
 1. Numéro d'OF généré côté serveur et unique, ex. OF-2026-0001 ; pas dérivé d'une saisie libre.

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
     Suite MySQL/MariaDB dédiée à la vérification du verrouillage concurrent
-    des compteurs d'OF. La base cible doit être une base de test séparée
+    des compteurs d'OF et des documents. La base cible doit être une base de test séparée
     (fab_c2me_test), jamais la base de développement.
 
     Création préalable :

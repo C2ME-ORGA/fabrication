@@ -24,6 +24,22 @@ class DatabaseSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumn('queue_jobs', 'payload'));
     }
 
+    public function test_document_tables_and_version_constraints_are_present(): void
+    {
+        foreach ([
+            'documents',
+            'document_versions',
+            'work_order_document_snapshots',
+            'document_audit_logs',
+        ] as $table) {
+            $this->assertTrue(Schema::hasTable($table), "La table {$table} est absente.");
+        }
+
+        $this->assertTrue(Schema::hasColumn('documents', 'current_version_id'));
+        $this->assertTrue(Schema::hasColumn('document_versions', 'version_number'));
+        $this->assertTrue(Schema::hasColumn('work_order_document_snapshots', 'reason'));
+    }
+
     public function test_work_order_status_and_priority_default_to_draft_and_normal(): void
     {
         $job = Job::factory()->create();

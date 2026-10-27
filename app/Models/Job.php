@@ -35,6 +35,14 @@ class Job extends Model
         return $this->hasMany(WorkOrder::class);
     }
 
+    /**
+     * @return HasMany<Document, $this>
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class);
+    }
+
     #[Scope]
     protected function open(Builder $query): void
     {

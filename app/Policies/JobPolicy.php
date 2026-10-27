@@ -33,6 +33,8 @@ class JobPolicy
      */
     public function delete(User $user, Job $job): bool
     {
-        return $user->isAdmin() && $job->workOrders()->doesntExist();
+        return $user->isAdmin()
+            && $job->workOrders()->doesntExist()
+            && $job->documents()->doesntExist();
     }
 }

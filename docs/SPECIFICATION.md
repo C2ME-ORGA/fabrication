@@ -15,6 +15,7 @@ Le dépôt était vide lors de la rédaction. Ce fichier décrit donc l'architec
 ## Modèle de données MVP
 
 ### Affaires (jobs)
+- Une affaire peut contenir plusieurs ordres de fabrication (relation 1:N `jobs` → `work_orders`). Un OF appartient à une seule affaire.
 - id, code_affaire unique, client, nom/projet, adresse chantier (facultatif)
 - devis_reference, date_devis (facultatif)
 - longueur_mm, largeur_mm, surface_m2 (facultatifs)
@@ -23,7 +24,7 @@ Le dépôt était vide lors de la rédaction. Ce fichier décrit donc l'architec
 
 ### Ordres de fabrication (work_orders)
 - id, number unique généré côté serveur
-- job_id, title, description, status (draft / ready / released / in_progress / quality_check / completed / cancelled)
+- job_id (FK obligatoire vers `jobs`), title, description, status (draft / ready / released / in_progress / quality_check / completed / cancelled)
 - priority, planned_start_at, planned_end_at, actual_start_at, actual_end_at
 - drawing_revision, approval fields (approved_by / approved_at)
 - created_by, released_by, released_at, notes

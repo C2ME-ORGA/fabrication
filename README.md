@@ -25,6 +25,7 @@ Prérequis : PHP supporté par Laravel 13, Composer, Node.js/npm et Git. Le scri
 - [Spécification fonctionnelle et technique](docs/SPECIFICATION.md)
 - [Socle technique fixé](docs/STACK.md)
 - [Guide de développement](docs/DEVELOPMENT.md)
+- [Affaires et ordres de fabrication](docs/DOMAIN.md)
 
 ## Périmètre MVP
 Affaires, documents techniques versionnés, ordres de fabrication, pièces/repères, opérations atelier, contrôles qualité, non-conformités et expéditions.

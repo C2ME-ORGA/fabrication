@@ -25,6 +25,26 @@ npm install
 npm run build
 ```
 
+## Après une modification du socle Affaires / OF
+
+```powershell
+php artisan migrate
+php artisan test
+vendor/bin/pint app database tests config
+php artisan route:list --path=admin
+php artisan migrate:status
+```
+
+La file d'attente `database` utilise la table `queue_jobs` : la table `jobs` est réservée aux affaires. Ce choix est appliqué par la migration `relocate_queue_jobs_table` et `config/queue.php`.
+
+## Déploiement et file d'attente
+
+- Arrêter les workers (`php artisan queue:restart` puis attendre la fin des jobs en cours) avant de lancer la migration qui renomme `jobs` en `queue_jobs`.
+- Ne pas définir `DB_QUEUE_TABLE=jobs` dans un environnement : laisser la valeur par défaut `queue_jobs`.
+- La migration est idempotente : si `queue_jobs` existe déjà, le renommage est ignoré. Le rollback ne renomme `queue_jobs` en `jobs` que si la table métier `jobs` n'existe plus.
+
+Le détail du modèle de données, de la numérotation et des transitions d'OF est documenté dans [DOMAIN.md](DOMAIN.md).
+
 ## Conventions
 - Toute mutation métier importante passe par une action/service testable.
 - Les transitions d'OF sont contrôlées côté serveur et couvertes par des tests.

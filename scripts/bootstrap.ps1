@@ -38,7 +38,7 @@ try {
     Write-Host "Installing Livewire 4 and FilamentPHP 5..."
     Push-Location $repoRoot
     try {
-        composer require "livewire/livewire:^4.0" "filament/filament:^5.0"
+        composer require "livewire/livewire:~4.2" "filament/filament:~5.4"
         if ($LASTEXITCODE -ne 0) { throw "composer require failed. Review the dependency error before retrying." }
 
         php artisan filament:install --panels

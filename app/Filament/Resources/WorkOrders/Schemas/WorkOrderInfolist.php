@@ -92,6 +92,18 @@ class WorkOrderInfolist
                         }),
                     ])
                     ->columnSpanFull(),
+
+                Section::make('Historique des actions')
+                    ->description('Journal immuable de la création et des transitions d’état de cet OF.')
+                    ->schema([
+                        Html::make(function (WorkOrder $record): string {
+                            return view('filament.work-orders.audit-log', [
+                                'workOrder' => $record,
+                                'auditLogs' => $record->auditLogs()->with('user')->latest('created_at')->get(),
+                            ])->render();
+                        }),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 }

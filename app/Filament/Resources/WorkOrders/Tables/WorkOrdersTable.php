@@ -12,6 +12,7 @@ use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -118,24 +119,39 @@ class WorkOrdersTable
                 continue;
             }
 
-            $actions[] = Action::make('transition_'.$status->value)
+            $action = Action::make('transition_'.$status->value)
                 ->label($status->getLabel())
                 ->icon(Heroicon::OutlinedArrowRight)
                 ->color($status->getColor())
                 ->requiresConfirmation()
                 ->modalHeading("Passer l'OF au statut « {$status->getLabel()} »")
                 ->visible(fn (WorkOrder $record): bool => $record->canTransitionTo($status)
-                    && (bool) auth()->user()?->can('transition', $record))
-                ->action(fn (WorkOrder $record) => self::transition($record, $status));
+                    && (bool) auth()->user()?->can('transition', $record));
+
+            // L'annulation peut être accompagnée d'un motif explicatif.
+            if ($status === WorkOrderStatus::Cancelled) {
+                $action->schema([
+                    Textarea::make('comment')
+                        ->label('Motif de l\'annulation')
+                        ->rows(3)
+                        ->nullable(),
+                ])->action(
+                    fn (WorkOrder $record, array $data) => self::transition($record, $status, $data['comment'] ?? null)
+                );
+            } else {
+                $action->action(fn (WorkOrder $record) => self::transition($record, $status));
+            }
+
+            $actions[] = $action;
         }
 
         return $actions;
     }
 
-    protected static function transition(WorkOrder $record, WorkOrderStatus $status): void
+    protected static function transition(WorkOrder $record, WorkOrderStatus $status, ?string $comment = null): void
     {
         try {
-            app(WorkOrderService::class)->transitionTo($record, $status, auth()->user());
+            app(WorkOrderService::class)->transitionTo($record, $status, auth()->user(), $comment);
 
             Notification::make()
                 ->success()

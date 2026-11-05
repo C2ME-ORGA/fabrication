@@ -85,6 +85,16 @@ class WorkOrder extends Model
     }
 
     /**
+     * Journal d'audit immuable des actions effectuées sur cet OF.
+     *
+     * @return HasMany<WorkOrderAuditLog, $this>
+     */
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(WorkOrderAuditLog::class)->latest('created_at');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function creator(): BelongsTo

@@ -10,16 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: true
-          MYSQL_DATABASE: fab_c2me_test
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=10
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,7 +18,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_mysql, gd, fileinfo, exif
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_sqlite, gd, fileinfo, exif
           coverage: none
 
       - name: Get Composer cache directory
@@ -66,25 +56,16 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate --force
 
-      - name: Run migrations on test database
+      - name: Verify migrations on SQLite file database
         env:
-          DB_CONNECTION: mysql
-          DB_HOST: mysql
-          DB_PORT: 3306
-          DB_DATABASE: fab_c2me_test
-          DB_USERNAME: root
-          DB_PASSWORD: ""
-        run: php artisan migrate --force
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+        run: |
+          touch database/database.sqlite
+          php artisan migrate --force
 
       - name: Execute test suite
-        env:
-          DB_CONNECTION: mysql
-          DB_HOST: mysql
-          DB_PORT: 3306
-          DB_DATABASE: fab_c2me_test
-          DB_USERNAME: root
-          DB_PASSWORD: ""
-        run: vendor/bin/phpunit -c phpunit.mysql.xml
+        run: vendor/bin/phpunit -c phpunit.xml
 
       - name: Run Laravel Pint (check)
         run: vendor/bin/pint --test app database tests config

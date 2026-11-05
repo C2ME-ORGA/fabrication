@@ -156,6 +156,7 @@ class DocumentFilamentTest extends TestCase
         $this->approvedVersion($document, 'A', $admin);
 
         $workOrder = app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Ready, $admin);
+        app(WorkOrderService::class)->approveByBE($workOrder, $admin);
         $workOrder = app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Released, $admin);
         $this->approvedVersion($document->fresh(), 'B', $admin);
 
@@ -175,6 +176,7 @@ class DocumentFilamentTest extends TestCase
             'title' => 'OF revue',
         ], $admin);
         $workOrder = app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Ready, $admin);
+        app(WorkOrderService::class)->approveByBE($workOrder, $admin);
         $workOrder = app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Released, $admin);
 
         $this->actingAs($admin);
@@ -217,6 +219,7 @@ class DocumentFilamentTest extends TestCase
         $this->approvedVersion($document, 'A', $admin);
 
         $workOrder = app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Ready, $admin);
+        app(WorkOrderService::class)->approveByBE($workOrder, $admin);
         $workOrder = app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Released, $admin);
 
         $this->actingAs($admin)

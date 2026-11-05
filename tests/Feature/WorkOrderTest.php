@@ -198,6 +198,7 @@ class WorkOrderTest extends TestCase
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
         $this->assertSame(WorkOrderStatus::Ready, $workOrder->status);
 
+        $this->service->approveByBE($workOrder, $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Released, $user);
         $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
         $this->assertNotNull($workOrder->released_at);
@@ -227,13 +228,15 @@ class WorkOrderTest extends TestCase
     public function test_a_work_order_can_only_be_released_when_its_job_is_active(): void
     {
         $job = Job::factory()->create();
+        $user = User::factory()->admin()->create();
         $workOrder = WorkOrder::factory()->create(['job_id' => $job->id]);
 
-        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready);
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $this->service->approveByBE($workOrder, $user);
 
         $this->expectException(ValidationException::class);
 
-        $this->service->transitionTo($workOrder, WorkOrderStatus::Released);
+        $this->service->transitionTo($workOrder, WorkOrderStatus::Released, $user);
     }
 
     public function test_a_completed_work_order_cannot_transition_or_be_updated(): void

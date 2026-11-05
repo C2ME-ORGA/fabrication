@@ -222,6 +222,7 @@ class DocumentSnapshotTest extends TestCase
     protected function release(WorkOrder $workOrder): WorkOrder
     {
         $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $this->workOrders->approveByBE($workOrder, $this->admin);
 
         return $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
     }

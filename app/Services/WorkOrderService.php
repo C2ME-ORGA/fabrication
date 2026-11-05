@@ -89,7 +89,7 @@ class WorkOrderService
     {
         $this->assertNoProtectedFields($data);
 
-        return DB::transaction(function () use ($workOrder, $data): WorkOrder {
+        return DB::transaction(function () use ($workOrder, $data, $actor): WorkOrder {
             $locked = $this->lock($workOrder);
 
             $this->assertEditable($locked);
@@ -99,6 +99,11 @@ class WorkOrderService
             }
 
             $data = $this->validate($data, partial: true);
+
+            $previousTechnicalValues = [];
+            foreach (self::TECHNICAL_FIELDS as $field) {
+                $previousTechnicalValues[$field] = $locked->{$field};
+            }
 
             $locked->fill(Arr::only($data, [
                 'title',
@@ -110,11 +115,31 @@ class WorkOrderService
                 'responsible_id',
             ]));
 
-            // Toute modification d'un OF approuvé mais pas encore libéré invalide
-            // l'approbation BE : une nouvelle approbation sera requise.
+            // Invalidation conditionnelle de l'approbation BE : uniquement si une
+            // donnée technique a réellement changé.
             if ($locked->be_approved_by !== null && $locked->be_approved_at !== null) {
-                $locked->be_approved_by = null;
-                $locked->be_approved_at = null;
+                $technicalChanged = false;
+                foreach (self::TECHNICAL_FIELDS as $field) {
+                    if ($locked->{$field} !== $previousTechnicalValues[$field]) {
+                        $technicalChanged = true;
+                        break;
+                    }
+                }
+
+                if ($technicalChanged) {
+                    $locked->be_approved_by = null;
+                    $locked->be_approved_at = null;
+
+                    // Tracer l'invalidation dans le journal d'audit.
+                    $this->audit(
+                        $locked,
+                        WorkOrderAuditEvent::BeApprovalInvalidated,
+                        $actor,
+                        null,
+                        $locked->status->value,
+                        'Invalidation de l\'approbation BE suite à modification technique.',
+                    );
+                }
             }
 
             $this->assertChronology(
@@ -362,6 +387,15 @@ class WorkOrderService
         'be_approved_by',
         'be_approved_at',
     ];
+
+    /**
+     * Champs techniques dont la modification invalide l'approbation BE.
+     * Les champs administratifs (title, priority, planned dates, notes,
+     * responsible_id) ne l'invalident pas.
+     *
+     * @var array<string>
+     */
+    protected const TECHNICAL_FIELDS = ['description'];
 
     protected function assertNoProtectedFields(array $data): void
     {

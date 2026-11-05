@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\WorkOrderAuditEvent;
+use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
 use App\Models\Job;
 use App\Models\User;
@@ -264,14 +265,14 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $this->assertSame(WorkOrderStatus::Ready, $workOrder->fresh()->status);
     }
 
-    public function test_be_approval_is_invalidated_on_work_order_update(): void
+    public function test_be_approval_preserved_on_title_change(): void
     {
         $job = Job::factory()->active()->create();
         $user = User::factory()->admin()->create();
 
         $workOrder = $this->service->create([
             'job_id' => $job->id,
-            'title' => 'OF approbation invalidée',
+            'title' => 'Titre original',
         ], $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
         $workOrder = $this->service->approveByBE($workOrder, $user);
@@ -279,13 +280,140 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $this->assertNotNull($workOrder->be_approved_by);
         $this->assertNotNull($workOrder->be_approved_at);
 
-        // Une modification invalide l'approbation BE.
+        // Modification administrative : l'approbation BE est conservée.
         $workOrder = $this->service->update($workOrder, [
-            'title' => 'Titre modifié après approbation',
+            'title' => 'Titre modifié',
+        ], $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+    }
+
+    public function test_be_approval_preserved_on_notes_change(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+
+        $workOrder = $this->service->create([
+            'job_id' => $job->id,
+            'title' => 'OF notes',
+            'notes' => 'Note originale',
+        ], $user);
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $workOrder = $this->service->approveByBE($workOrder, $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+
+        // Modification administrative : l'approbation BE est conservée.
+        $workOrder = $this->service->update($workOrder, [
+            'notes' => 'Note modifiée',
+        ], $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+    }
+
+    public function test_be_approval_preserved_on_priority_change(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+
+        $workOrder = $this->service->create([
+            'job_id' => $job->id,
+            'title' => 'OF priorité',
+            'priority' => WorkOrderPriority::Normal,
+        ], $user);
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $workOrder = $this->service->approveByBE($workOrder, $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+
+        // Modification administrative : l'approbation BE est conservée.
+        $workOrder = $this->service->update($workOrder, [
+            'priority' => WorkOrderPriority::Urgent,
+        ], $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+    }
+
+    public function test_be_approval_preserved_on_responsible_change(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+        $responsible = User::factory()->create();
+        $otherResponsible = User::factory()->create();
+
+        $workOrder = $this->service->create([
+            'job_id' => $job->id,
+            'title' => 'OF responsable',
+            'responsible_id' => $responsible->id,
+        ], $user);
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $workOrder = $this->service->approveByBE($workOrder, $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+
+        // Modification administrative : l'approbation BE est conservée.
+        $workOrder = $this->service->update($workOrder, [
+            'responsible_id' => $otherResponsible->id,
+        ], $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+        $this->assertSame($otherResponsible->id, $workOrder->responsible_id);
+    }
+
+    public function test_be_approval_invalidated_on_technical_change(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+
+        $workOrder = $this->service->create([
+            'job_id' => $job->id,
+            'title' => 'OF technique',
+            'description' => 'Description originale',
+        ], $user);
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $workOrder = $this->service->approveByBE($workOrder, $user);
+
+        $this->assertNotNull($workOrder->be_approved_by);
+        $this->assertNotNull($workOrder->be_approved_at);
+
+        // Modification technique : l'approbation BE est invalidée.
+        $workOrder = $this->service->update($workOrder, [
+            'description' => 'Description modifiée',
         ], $user);
 
         $this->assertNull($workOrder->be_approved_by);
         $this->assertNull($workOrder->be_approved_at);
+    }
+
+    public function test_be_approval_invalidated_is_traced_in_audit_log(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+
+        $workOrder = $this->service->create([
+            'job_id' => $job->id,
+            'title' => 'OF invalide audit',
+            'description' => 'Description originale',
+        ], $user);
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $workOrder = $this->service->approveByBE($workOrder, $user);
+
+        $workOrder = $this->service->update($workOrder, [
+            'description' => 'Description modifiée',
+        ], $user);
+
+        $this->assertDatabaseHas('work_order_audit_logs', [
+            'work_order_id' => $workOrder->id,
+            'user_id' => $user->id,
+            'event' => WorkOrderAuditEvent::BeApprovalInvalidated->value,
+        ]);
     }
 
     public function test_new_be_approval_required_after_invalidation(): void
@@ -296,13 +424,14 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $workOrder = $this->service->create([
             'job_id' => $job->id,
             'title' => 'OF réapprobation',
+            'description' => 'Description originale',
         ], $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
         $workOrder = $this->service->approveByBE($workOrder, $user);
 
-        // Invalidation via modification.
+        // Invalidation via modification technique.
         $workOrder = $this->service->update($workOrder, [
-            'title' => 'Titre modifié',
+            'description' => 'Description modifiée',
         ], $user);
 
         $this->assertNull($workOrder->be_approved_by);
@@ -318,24 +447,29 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
     }
 
-    public function test_be_approval_preserved_on_released_work_order(): void
+    public function test_release_refused_after_invalidation(): void
     {
         $job = Job::factory()->active()->create();
         $user = User::factory()->admin()->create();
 
         $workOrder = $this->service->create([
             'job_id' => $job->id,
-            'title' => 'OF approbation préservée',
+            'title' => 'OF refus après invalide',
+            'description' => 'Description originale',
         ], $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
-        $this->service->approveByBE($workOrder, $user);
-        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Released, $user);
+        $workOrder = $this->service->approveByBE($workOrder, $user);
 
-        // L'OF est libéré : l'approbation BE et les données sont conservées.
-        $this->assertNotNull($workOrder->be_approved_by);
-        $this->assertNotNull($workOrder->be_approved_at);
-        $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
-        $this->assertNotNull($workOrder->released_at);
+        // Invalidation via modification technique.
+        $workOrder = $this->service->update($workOrder, [
+            'description' => 'Description modifiée',
+        ], $user);
+
+        $this->assertNull($workOrder->be_approved_by);
+
+        // La libération doit être refusée.
+        $this->expectException(ValidationException::class);
+        $this->service->transitionTo($workOrder, WorkOrderStatus::Released, $user);
     }
 
     public function test_be_approver_relation_works(): void
@@ -346,6 +480,7 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $workOrder = $this->service->create([
             'job_id' => $job->id,
             'title' => 'OF relation BE approver',
+            'description' => 'Description',
         ], $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
         $workOrder = $this->service->approveByBE($workOrder, $user);

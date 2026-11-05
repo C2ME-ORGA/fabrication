@@ -166,7 +166,7 @@ class WorkOrdersTable
             ->requiresConfirmation()
             ->modalHeading('Approbation bureau d\'études')
             ->modalDescription('Cette action approuve l\'OF pour le bureau d\'études. Une approbation est requise avant toute libération.')
-            ->visible(fn (WorkOrder $record): bool => in_array($record->status, ['draft', 'ready'], true)
+            ->visible(fn (WorkOrder $record): bool => in_array($record->status, [WorkOrderStatus::Draft, WorkOrderStatus::Ready], true)
                 && $record->be_approved_by === null
                 && (bool) auth()->user()?->can('approveBE', $record)
             )

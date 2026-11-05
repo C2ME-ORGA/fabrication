@@ -128,6 +128,26 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
 
     // === Approbation bureau d'études ===
 
+
+    public function test_be_approval_fields_cannot_be_mass_assigned(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+        $workOrder = WorkOrder::factory()->create(['job_id' => $job->id]);
+
+        $workOrder->fill([
+            'be_approved_by' => $user->id,
+            'be_approved_at' => now(),
+            'be_approval_batch_id' => 'forged-batch-id',
+            'be_approval_snapshot_id' => 123,
+        ]);
+
+        $this->assertNull($workOrder->be_approved_by);
+        $this->assertNull($workOrder->be_approved_at);
+        $this->assertNull($workOrder->be_approval_batch_id);
+        $this->assertNull($workOrder->be_approval_snapshot_id);
+    }
+
     public function test_be_approval_by_authorized_user(): void
     {
         $job = Job::factory()->active()->create();

@@ -135,8 +135,19 @@ class DocumentSnapshotService
                 return false;
             }
 
-            // Both have a version: compare version ID, revision, SHA-256 and
-            // document metadata (category, title, reference).
+            // Metadata is part of the BE review even when no approved version
+            // existed at approval time.
+            if ($snapshot->category !== $document->category) {
+                return false;
+            }
+            if ($snapshot->title !== $document->title) {
+                return false;
+            }
+            if ($snapshot->reference !== $document->reference) {
+                return false;
+            }
+
+            // When a version exists, compare its immutable identity and content.
             if ($currentVersion !== null) {
                 if ($snapshot->document_version_id !== $currentVersion->getKey()) {
                     return false;
@@ -145,16 +156,6 @@ class DocumentSnapshotService
                     return false;
                 }
                 if ($snapshot->sha256 !== $currentVersion->sha256) {
-                    return false;
-                }
-                // Document metadata may have been edited after BE approval.
-                if ($snapshot->category !== $document->category) {
-                    return false;
-                }
-                if ($snapshot->title !== $document->title) {
-                    return false;
-                }
-                if ($snapshot->reference !== $document->reference) {
                     return false;
                 }
             }

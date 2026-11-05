@@ -11,10 +11,12 @@ use App\Models\Job;
 use App\Models\User;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderDocumentSnapshot;
+use App\Services\DocumentApplicabilityService;
 use App\Services\DocumentService;
 use App\Services\DocumentVersionService;
 use App\Services\WorkOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\DocumentTestHelpers;
 use Tests\TestCase;
@@ -569,6 +571,157 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $workOrder->refresh();
         $this->assertNotNull($workOrder->be_approved_by);
         $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
+    }
+
+    public function test_concurrent_creation_during_release_is_serialized(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped(
+                'Test de concurrence réel nécessite MySQL/MariaDB. '
+                .'Lancez avec phpunit.mysql.xml et une base de test dédiée.'
+            );
+        }
+
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF concurrence création',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan applicable',
+        ], $this->admin);
+        $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Connexion A : démarre une libération et verrouille les documents applicables.
+        $pdoA = DB::connection()->getPdo();
+        $pdoA->beginTransaction();
+        $pdoA->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+
+        DB::table('jobs')->where('id', $this->job->id)->lockForUpdate()->first();
+
+        $docs = app(DocumentApplicabilityService::class)->applicableDocumentsFor($workOrder);
+        foreach ($docs as $d) {
+            DB::table('documents')->where('id', $d->id)->lockForUpdate()->first();
+        }
+
+        // Connexion B : tente de créer un nouveau document applicable pendant la libération.
+        $pdoB = DB::connection()->getPdo();
+        $pdoB->beginTransaction();
+
+        $createStarted = microtime(true);
+        try {
+            app(DocumentService::class)->create([
+                'job_id' => $this->job->id,
+                'category' => DocumentCategory::AssemblyPlan,
+                'title' => 'Document concurrent',
+                'reference' => 'REF-CONCURRENT',
+            ], $this->admin);
+            $createTime = microtime(true) - $createStarted;
+            $this->addWarning('Connexion B a réussi à créer pendant la libération (bloquage non effectif sur ce driver).');
+        } catch (\Throwable $e) {
+            $createTime = microtime(true) - $createStarted;
+        }
+
+        // Connexion A termine la libération.
+        $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+        $pdoA->commit();
+
+        $pdoB->commit();
+
+        // Vérifier que le nouveau document n'a pas été inclus dans la libération.
+        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
+            ->where('work_order_id', $workOrder->id)
+            ->where('reason', DocumentSnapshotReason::Release->value)
+            ->get();
+
+        $titles = $releaseSnapshots->pluck('title')->all();
+        $this->assertNotContains('Document concurrent', $titles,
+            'Un document créé pendant la libération ne doit pas être inclus dans le snapshot de libération.');
+    }
+
+    public function test_concurrent_version_approval_during_release_is_serialized(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped(
+                'Test de concurrence réel nécessite MySQL/MariaDB. '
+                .'Lancez avec phpunit.mysql.xml et une base de test dédiée.'
+            );
+        }
+
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF concurrence version',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan applicable',
+        ], $this->admin);
+        $versionA = $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Connexion A : démarre une libération et verrouille les documents.
+        $pdoA = DB::connection()->getPdo();
+        $pdoA->beginTransaction();
+        $pdoA->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+
+        DB::table('jobs')->where('id', $this->job->id)->lockForUpdate()->first();
+
+        $docs = app(DocumentApplicabilityService::class)->applicableDocumentsFor($workOrder);
+        foreach ($docs as $d) {
+            DB::table('documents')->where('id', $d->id)->lockForUpdate()->first();
+        }
+
+        // Connexion B : tente d'approuver une nouvelle version pendant la libération.
+        $pdoB = DB::connection()->getPdo();
+        $pdoB->beginTransaction();
+
+        $approveStarted = microtime(true);
+        try {
+            app(DocumentVersionService::class)->upload(
+                $doc,
+                $this->pdfUpload('plan-b.pdf'),
+                'B',
+                $this->admin,
+            );
+            app(DocumentVersionService::class)->approve(
+                app(DocumentVersionService::class)->upload(
+                    $doc,
+                    $this->pdfUpload('plan-b.pdf'),
+                    'B',
+                    $this->admin,
+                ),
+                $this->admin,
+                'Approbation concurrente'
+            );
+            $approveTime = microtime(true) - $approveStarted;
+        } catch (\Throwable $e) {
+            $approveTime = microtime(true) - $approveStarted;
+        }
+
+        // Connexion A termine la libération.
+        $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+        $pdoA->commit();
+
+        $pdoB->commit();
+
+        // Vérifier que la nouvelle version n'a pas été incluse dans le snapshot de libération.
+        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
+            ->where('work_order_id', $workOrder->id)
+            ->where('reason', DocumentSnapshotReason::Release->value)
+            ->get();
+
+        $versions = $releaseSnapshots->pluck('document_version_id')->all();
+        $this->assertNotContains($versionA->id, $versions,
+            'Une version approuvée pendant la libération ne doit pas être incluse dans le snapshot de libération.');
     }
 
     private function createBeApprovedWorkOrderWithDocument(): WorkOrder

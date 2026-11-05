@@ -92,6 +92,17 @@ class DocumentService
                 ]);
             }
 
+            // Verrouiller les parents (WorkOrder puis Job) pour sérialiser avec
+            // les libérations et approbations BE concurrentes. Même ordre de
+            // verrouillage que dans WorkOrderService pour prévenir les
+            // interblocages.
+            if (($woId = $workOrderId ?? $locked->work_order_id) !== null) {
+                WorkOrder::query()->lockForUpdate()->findOrFail($woId);
+            }
+            if (($jobId = $jobId ?? $locked->job_id) !== null) {
+                Job::query()->lockForUpdate()->findOrFail($jobId);
+            }
+
             $locked->fill(Arr::only($data, [
                 'job_id',
                 'work_order_id',
@@ -124,6 +135,13 @@ class DocumentService
                 throw ValidationException::withMessages([
                     'status' => 'Ce document est déjà archivé.',
                 ]);
+            }
+
+            // Verrouiller l'affaire parent pour sérialiser avec les libérations
+            // et approbations BE concurrentes. Même ordre de verrouillage que
+            // dans WorkOrderService.
+            if (($jobId = $locked->job_id) !== null) {
+                Job::query()->lockForUpdate()->findOrFail($jobId);
             }
 
             $locked->status = DocumentStatus::Archived;

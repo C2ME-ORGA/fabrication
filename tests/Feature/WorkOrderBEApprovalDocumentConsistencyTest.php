@@ -11,10 +11,10 @@ use App\Models\Job;
 use App\Models\User;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderDocumentSnapshot;
-use App\Services\DocumentApplicabilityService;
 use App\Services\DocumentService;
 use App\Services\DocumentVersionService;
 use App\Services\WorkOrderService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -573,6 +573,13 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
     }
 
+    /**
+     * Vérifie, sur MySQL/MariaDB avec une seconde connexion réelle
+     * (`mysql_probe`, même pattern que WorkOrderNumberGeneratorTest), que la
+     * libération d'un OF verrouille le Job parent. DocumentService::create()
+     * acquiert ce même verrou en premier : une création concurrente de
+     * document applicable est donc bloquée jusqu'à la fin de la libération.
+     */
     public function test_concurrent_creation_during_release_is_serialized(): void
     {
         if (DB::connection()->getDriverName() !== 'mysql') {
@@ -597,53 +604,24 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
         $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
 
-        // Connexion A : démarre une libération et verrouille les documents applicables.
-        $pdoA = DB::connection()->getPdo();
-        $pdoA->beginTransaction();
-        $pdoA->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-
-        DB::table('jobs')->where('id', $this->job->id)->lockForUpdate()->first();
-
-        $docs = app(DocumentApplicabilityService::class)->applicableDocumentsFor($workOrder);
-        foreach ($docs as $d) {
-            DB::table('documents')->where('id', $d->id)->lockForUpdate()->first();
-        }
-
-        // Connexion B : tente de créer un nouveau document applicable pendant la libération.
-        $pdoB = DB::connection()->getPdo();
-        $pdoB->beginTransaction();
-
-        $createStarted = microtime(true);
-        try {
-            app(DocumentService::class)->create([
-                'job_id' => $this->job->id,
-                'category' => DocumentCategory::AssemblyPlan,
-                'title' => 'Document concurrent',
-                'reference' => 'REF-CONCURRENT',
-            ], $this->admin);
-            $createTime = microtime(true) - $createStarted;
-            $this->addWarning('Connexion B a réussi à créer pendant la libération (bloquage non effectif sur ce driver).');
-        } catch (\Throwable $e) {
-            $createTime = microtime(true) - $createStarted;
-        }
-
-        // Connexion A termine la libération.
+        // La libération acquiert les verrous dans la transaction de test
+        // (RefreshDatabase) : ils restent tenus jusqu'au rollback final,
+        // exactement comme dans WorkOrderNumberGeneratorTest.
         $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
-        $pdoA->commit();
 
-        $pdoB->commit();
+        // Connexion indépendante : elle doit échouer à verrouiller le Job
+        // parent, ce qui prouve qu'une création concurrente serait bloquée.
+        $this->assertProbeCannotLock('jobs', $this->job->id);
 
-        // Vérifier que le nouveau document n'a pas été inclus dans la libération.
-        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
-            ->where('work_order_id', $workOrder->id)
-            ->where('reason', DocumentSnapshotReason::Release->value)
-            ->get();
-
-        $titles = $releaseSnapshots->pluck('title')->all();
-        $this->assertNotContains('Document concurrent', $titles,
-            'Un document créé pendant la libération ne doit pas être inclus dans le snapshot de libération.');
+        // Le document applicable est également verrouillé (métadonnées).
+        $this->assertProbeCannotLock('documents', $doc->id);
     }
 
+    /**
+     * Vérifie que la libération verrouille le Document parent. C'est le
+     * premier verrou acquis par DocumentVersionService::approve() : une
+     * approbation de version concurrente est donc sérialisée.
+     */
     public function test_concurrent_version_approval_during_release_is_serialized(): void
     {
         if (DB::connection()->getDriverName() !== 'mysql') {
@@ -668,60 +646,47 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
         $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
 
-        // Connexion A : démarre une libération et verrouille les documents.
-        $pdoA = DB::connection()->getPdo();
-        $pdoA->beginTransaction();
-        $pdoA->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-
-        DB::table('jobs')->where('id', $this->job->id)->lockForUpdate()->first();
-
-        $docs = app(DocumentApplicabilityService::class)->applicableDocumentsFor($workOrder);
-        foreach ($docs as $d) {
-            DB::table('documents')->where('id', $d->id)->lockForUpdate()->first();
-        }
-
-        // Connexion B : tente d'approuver une nouvelle version pendant la libération.
-        $pdoB = DB::connection()->getPdo();
-        $pdoB->beginTransaction();
-
-        $approveStarted = microtime(true);
-        try {
-            app(DocumentVersionService::class)->upload(
-                $doc,
-                $this->pdfUpload('plan-b.pdf'),
-                'B',
-                $this->admin,
-            );
-            app(DocumentVersionService::class)->approve(
-                app(DocumentVersionService::class)->upload(
-                    $doc,
-                    $this->pdfUpload('plan-b.pdf'),
-                    'B',
-                    $this->admin,
-                ),
-                $this->admin,
-                'Approbation concurrente'
-            );
-            $approveTime = microtime(true) - $approveStarted;
-        } catch (\Throwable $e) {
-            $approveTime = microtime(true) - $approveStarted;
-        }
-
-        // Connexion A termine la libération.
         $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
-        $pdoA->commit();
 
-        $pdoB->commit();
+        // DocumentVersionService::approve() verrouille d'abord le Document.
+        $this->assertProbeCannotLock('documents', $doc->id);
 
-        // Vérifier que la nouvelle version n'a pas été incluse dans le snapshot de libération.
-        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
+        // Le snapshot de libération doit contenir la version examinée par le BE
+        // (version A), et non une version approuvée après coup.
+        $releaseVersionId = WorkOrderDocumentSnapshot::query()
             ->where('work_order_id', $workOrder->id)
             ->where('reason', DocumentSnapshotReason::Release->value)
-            ->get();
+            ->where('document_id', $doc->id)
+            ->value('document_version_id');
 
-        $versions = $releaseSnapshots->pluck('document_version_id')->all();
-        $this->assertNotContains($versionA->id, $versions,
-            'Une version approuvée pendant la libération ne doit pas être incluse dans le snapshot de libération.');
+        $this->assertSame($versionA->id, $releaseVersionId);
+    }
+
+    /**
+     * Ouvre une seconde connexion PDO indépendante (`mysql_probe`) et tente un
+     * `SELECT ... FOR UPDATE NOWAIT` sur la ligne cible. Échoue le test si le
+     * verrou peut être acquis (aucune concurrence réelle).
+     */
+    private function assertProbeCannotLock(string $table, int $id): void
+    {
+        $connection = config('database.connections.mysql');
+        config(['database.connections.mysql_probe' => $connection]);
+        DB::purge('mysql_probe');
+
+        try {
+            DB::connection('mysql_probe')->statement(
+                "select * from {$table} where id = ? for update nowait",
+                [$id],
+            );
+
+            $this->fail(
+                "La ligne {$table}#{$id} aurait dû être verrouillée par la libération en cours."
+            );
+        } catch (QueryException $exception) {
+            $this->assertNotSame('', $exception->getMessage());
+        } finally {
+            DB::purge('mysql_probe');
+        }
     }
 
     private function createBeApprovedWorkOrderWithDocument(): WorkOrder

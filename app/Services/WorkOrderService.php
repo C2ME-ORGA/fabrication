@@ -6,6 +6,7 @@ use App\Enums\JobStatus;
 use App\Enums\WorkOrderAuditEvent;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
+use App\Models\Document;
 use App\Models\Job;
 use App\Models\User;
 use App\Models\WorkOrder;
@@ -31,6 +32,7 @@ class WorkOrderService
     public function __construct(
         protected WorkOrderNumberGenerator $numbers,
         protected DocumentSnapshotService $documentSnapshots,
+        protected DocumentApplicabilityService $applicability,
     ) {}
 
     /**
@@ -181,7 +183,33 @@ class WorkOrderService
                     );
                 }
 
-                // Vérifier que l'état documentaire n'a pas évolué depuis l'approbation BE.
+                // Une approbation BE antérieure à l'introduction des snapshots
+                // documentaires (be_approval_batch_id = null) doit être renouvelée.
+                // Un OF historique approuvé sans snapshot ne peut pas être libéré
+                // sans une nouvelle approbation explicite.
+                if ($locked->be_approval_batch_id === null) {
+                    $this->fail(
+                        'status',
+                        'L\'approbation du bureau d\'études n\'est pas associée à un snapshot documentaire. Une nouvelle approbation est requise.',
+                    );
+                }
+
+                // Verrouiller les documents applicables par identifiant croissant
+                // pour sérialiser avec les approbations de versions documentaires
+                // concurrentes et prévenir les interblocages.
+                $applicableDocumentIds = $this->applicability->applicableDocumentsFor($locked)
+                    ->sortBy('id')
+                    ->pluck('id')
+                    ->toArray();
+
+                foreach ($applicableDocumentIds as $documentId) {
+                    Document::query()->lockForUpdate()->findOrFail($documentId);
+                }
+
+                // Vérifier que l'état documentaire n'a pas évolué depuis
+                // l'approbation BE. Les documents sont verrouillés, donc aucune
+                // approbation concurrente ne peut modifier l'état entre la
+                // vérification et la capture du snapshot de libération.
                 $batchId = $this->getBEApprovalBatchId($locked);
                 if ($batchId !== null && ! $this->documentSnapshots->isBEApprovalStillValid($locked, $batchId)) {
                     // Tracer l'obsolescence avant de refuser.
@@ -213,7 +241,8 @@ class WorkOrderService
                 $locked->released_at = now();
 
                 // Freeze the approved document versions applicable at release.
-                // The snapshot rows are written in this same transaction.
+                // The snapshot rows are written in this same transaction, on
+                // documents already locked above.
                 $this->documentSnapshots->captureForRelease($locked, $actor);
             }
 
@@ -277,6 +306,18 @@ class WorkOrderService
                     'status',
                     'L\'approbation du bureau d\'études n\'est possible que pour un OF au statut Brouillon ou Prêt.',
                 );
+            }
+
+            // Verrouiller les documents applicables pour sérialiser avec les
+            // libérations concurrentes. Même ordre de verrouillage (ID croissant)
+            // que dans transitionTo() pour prévenir les interblocages.
+            $applicableDocumentIds = $this->applicability->applicableDocumentsFor($locked)
+                ->sortBy('id')
+                ->pluck('id')
+                ->toArray();
+
+            foreach ($applicableDocumentIds as $documentId) {
+                Document::query()->lockForUpdate()->findOrFail($documentId);
             }
 
             $locked->be_approved_by = $approver->getKey();

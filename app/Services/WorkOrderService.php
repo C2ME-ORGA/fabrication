@@ -167,7 +167,7 @@ class WorkOrderService
         $obsoleteApproval = null;
 
         try {
-            return DB::transaction(function () use ($workOrder, $target, $actor, $comment, &$obsoleteApproval): WorkOrder {
+            return DB::transaction(function () use ($workOrder, $target, $actor, $comment, & $obsoleteApproval): WorkOrder {
                 $locked = $this->lock($workOrder);
                 $from = $locked->status;
     

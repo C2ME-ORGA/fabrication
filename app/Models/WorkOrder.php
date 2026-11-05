@@ -20,6 +20,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'planned_start_at',
     'planned_end_at',
     'notes',
+    'responsible_id',
+    'be_approved_by',
+    'be_approved_at',
 ])]
 class WorkOrder extends Model
 {
@@ -38,6 +41,9 @@ class WorkOrder extends Model
         'created_by',
         'released_by',
         'released_at',
+        'responsible_id',
+        'be_approved_by',
+        'be_approved_at',
     ];
 
     /**
@@ -108,6 +114,22 @@ class WorkOrder extends Model
     public function releaser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'released_by');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function responsible(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsible_id');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function beApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'be_approved_by');
     }
 
     public function isLocked(): bool

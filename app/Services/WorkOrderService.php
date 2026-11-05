@@ -66,6 +66,7 @@ class WorkOrderService
                 'planned_start_at',
                 'planned_end_at',
                 'notes',
+                'responsible_id',
             ]));
 
             $workOrder->number = $this->numbers->nextNumber();
@@ -106,7 +107,15 @@ class WorkOrderService
                 'planned_start_at',
                 'planned_end_at',
                 'notes',
+                'responsible_id',
             ]));
+
+            // Toute modification d'un OF approuvé mais pas encore libéré invalide
+            // l'approbation BE : une nouvelle approbation sera requise.
+            if ($locked->be_approved_by !== null && $locked->be_approved_at !== null) {
+                $locked->be_approved_by = null;
+                $locked->be_approved_at = null;
+            }
 
             $this->assertChronology(
                 $locked->planned_start_at,
@@ -139,6 +148,14 @@ class WorkOrderService
             }
 
             if ($target === WorkOrderStatus::Released) {
+                // Vérification de l'approbation BE avant libération.
+                if ($locked->be_approved_by === null || $locked->be_approved_at === null) {
+                    $this->fail(
+                        'status',
+                        'Un ordre de fabrication ne peut être libéré sans approbation du bureau d\'études.',
+                    );
+                }
+
                 $job = Job::query()->lockForUpdate()->find($locked->job_id);
 
                 if ($job === null || $job->status !== JobStatus::Active) {
@@ -175,6 +192,61 @@ class WorkOrderService
                 $from->value,
                 $target->value,
                 $comment,
+            );
+
+            return $locked->refresh();
+        }, attempts: 3);
+    }
+
+    /**
+     * Approuve un OF par le bureau d'études avant sa libération.
+     *
+     * L'approbation peut être invalidée par une modification ultérieure de l'OF
+     * (voir update()).
+     *
+     * @throws ValidationException
+     */
+    public function approveByBE(WorkOrder $workOrder, User $approver): WorkOrder
+    {
+        return DB::transaction(function () use ($workOrder, $approver): WorkOrder {
+            $locked = $this->lock($workOrder);
+
+            // Seuls les administrateurs peuvent approuver.
+            if (! $approver->isAdmin()) {
+                $this->fail(
+                    'user',
+                    'Seul un administrateur peut approuver un OF pour le bureau d\'études.',
+                );
+            }
+
+            // Un OF terminé ou annulé est gelé : impossible à approuver.
+            if ($locked->isLocked()) {
+                $this->fail(
+                    'status',
+                    'Un OF terminé ou annulé ne peut pas être approuvé par le bureau d\'études.',
+                );
+            }
+
+            // L'approbation est possible en brouillon ou prêt (avant libération).
+            if (! in_array($locked->status, [WorkOrderStatus::Draft, WorkOrderStatus::Ready], true)) {
+                $this->fail(
+                    'status',
+                    'L\'approbation du bureau d\'études n\'est possible que pour un OF au statut Brouillon ou Prêt.',
+                );
+            }
+
+            $locked->be_approved_by = $approver->getKey();
+            $locked->be_approved_at = now();
+            $locked->save();
+
+            // Tracer l'approbation dans le journal d'audit.
+            $this->audit(
+                $locked,
+                WorkOrderAuditEvent::BeApproved,
+                $approver,
+                null,
+                $locked->status->value,
+                'Approbation bureau d\'études',
             );
 
             return $locked->refresh();
@@ -249,6 +321,7 @@ class WorkOrderService
             'planned_start_at' => ['nullable', 'date'],
             'planned_end_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            'responsible_id' => ['sometimes', 'nullable', 'integer', Rule::exists('users', 'id')],
         ];
 
         $validated = Validator::make($data, $rules)->validate();
@@ -278,11 +351,24 @@ class WorkOrderService
     /**
      * @param  array<string, mixed>  $data
      */
+    /**
+     * Champs que le service métier est autorisé à assigner via sa liste
+     * blanche explicite, même s'ils figurent dans PROTECTED_FIELDS.
+     *
+     * @var array<string>
+     */
+    protected const SERVICE_ASSIGNABLE_FIELDS = [
+        'responsible_id',
+        'be_approved_by',
+        'be_approved_at',
+    ];
+
     protected function assertNoProtectedFields(array $data): void
     {
         $forbidden = array_values(array_filter(
             WorkOrder::PROTECTED_FIELDS,
-            fn (string $field): bool => array_key_exists($field, $data),
+            fn (string $field): bool => array_key_exists($field, $data)
+                && ! in_array($field, self::SERVICE_ASSIGNABLE_FIELDS, true),
         ));
 
         if ($forbidden !== []) {

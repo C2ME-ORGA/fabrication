@@ -84,6 +84,7 @@ class WorkOrdersTable
                 ViewAction::make(),
                 EditAction::make(),
                 ...self::transitionActions(),
+                ...self::approvalActions(),
                 WorkOrderDocumentActions::reReviewDocuments(),
                 DeleteAction::make()
                     ->requiresConfirmation()
@@ -146,6 +147,46 @@ class WorkOrdersTable
         }
 
         return $actions;
+    }
+
+    /**
+     * Action d'approbation par le bureau d'études.
+     * Visible uniquement pour les OF en brouillon ou prêt, non encore approuvés.
+     *
+     * @return array<int, Action>
+     */
+    protected static function approvalActions(): array
+    {
+        $actions = [];
+
+        $actions[] = Action::make('approveBE')
+            ->label('Approuver (BE)')
+            ->icon(Heroicon::OutlinedCheckBadge)
+            ->color('primary')
+            ->requiresConfirmation()
+            ->modalHeading('Approbation bureau d\'études')
+            ->modalDescription('Cette action approuve l\'OF pour le bureau d\'études. Une approbation est requise avant toute libération.')
+            ->visible(fn (WorkOrder $record): bool => in_array($record->status, ['draft', 'ready'], true)
+                && $record->be_approved_by === null
+                && (bool) auth()->user()?->can('approveBE', $record)
+            )
+            ->action(fn (WorkOrder $record) => self::approveBE($record));
+
+        return $actions;
+    }
+
+    protected static function approveBE(WorkOrder $record): void
+    {
+        try {
+            app(WorkOrderService::class)->approveByBE($record, auth()->user());
+
+            Notification::make()
+                ->success()
+                ->title('OF approuvé par le bureau d\'études')
+                ->send();
+        } catch (ValidationException $exception) {
+            self::notifyRefusal($exception);
+        }
     }
 
     protected static function transition(WorkOrder $record, WorkOrderStatus $status, ?string $comment = null): void

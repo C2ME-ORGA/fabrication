@@ -688,13 +688,27 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
         $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
 
+        // Préparer une version B en attente de validation après l'approbation BE.
+        // Son approbation concurrente doit prendre le verrou du même document.
+        $versionB = $this->versions->upload(
+            $doc,
+            $this->pdfUpload('plan-b-pending.pdf'),
+            'B',
+            $this->admin,
+        );
+        $versionB = $this->versions->submit($versionB, $this->admin);
+
         $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
 
-        // DocumentVersionService::approve() verrouille d'abord le Document.
+        // DocumentVersionService::approve() commence par lockDocument().
+        // La connexion indépendante ne peut donc pas prendre ce verrou NOWAIT.
         $this->assertProbeCannotLock('documents', $doc->id);
 
+        // La version B n'a pas été approuvée pendant la libération.
+        $this->assertSame('pending_validation', $versionB->fresh()->status->value);
+
         // Le snapshot de libération doit contenir la version examinée par le BE
-        // (version A), et non une version approuvée après coup.
+        // (version A), et non la version B encore en attente.
         $releaseVersionId = WorkOrderDocumentSnapshot::query()
             ->where('work_order_id', $workOrder->id)
             ->where('reason', DocumentSnapshotReason::Release->value)

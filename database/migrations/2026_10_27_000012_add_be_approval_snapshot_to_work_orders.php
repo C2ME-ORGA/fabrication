@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -49,6 +51,26 @@ return new class extends Migration
         });
 
         Schema::table('work_order_document_snapshots', function (Blueprint $table): void {
+            // Avant de rétablir les contraintes NOT NULL, vérifier qu'aucun
+            // snapshot d'approbation BE ne contient de valeurs nulles dans
+            // ces colonnes. Une telle suppression détruirait silencieusement
+            // des données historiques d'approbation.
+            $nullCount = DB::table('work_order_document_snapshots')
+                ->where('reason', 'be_approval')
+                ->where(function ($query): void {
+                    $query->whereNull('document_version_id')
+                        ->orWhereNull('revision')
+                        ->orWhereNull('version_number')
+                        ->orWhereNull('sha256');
+                })
+                ->count();
+
+            if ($nullCount > 0) {
+                throw new QueryException(
+                    "Impossible de revenir en arrière : {$nullCount} snapshot(s) d'approbation BE contiennent des valeurs nulles dans document_version_id, revision, version_number ou sha256. Supprimez ou mettez à jour ces snapshots avant d'appliquer le rollback."
+                );
+            }
+
             $table->dropIndex(['be_approval_batch_id']);
             $table->dropColumn('be_approval_batch_id');
             $table->string('revision', 32)->nullable(false)->change();

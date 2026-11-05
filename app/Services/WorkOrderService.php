@@ -194,6 +194,19 @@ class WorkOrderService
                     );
                 }
 
+                // Verrouiller l'affaire parent avant les documents applicables
+                // pour sérialiser avec les créations de documents concurrentes
+                // et prévenir les interblocages (même ordre que dans
+                // DocumentService::create() et approveByBE()).
+                $job = Job::query()->lockForUpdate()->find($locked->job_id);
+
+                if ($job === null || $job->status !== JobStatus::Active) {
+                    $this->fail(
+                        'status',
+                        'Un ordre de fabrication ne peut être libéré que si son affaire est active.',
+                    );
+                }
+
                 // Verrouiller les documents applicables par identifiant croissant
                 // pour sérialiser avec les approbations de versions documentaires
                 // concurrentes et prévenir les interblocages.
@@ -225,15 +238,6 @@ class WorkOrderService
                     $this->fail(
                         'status',
                         'L\'approbation du bureau d\'études est obsolète : les références documentaires ont évolué depuis l\'approbation. Une nouvelle approbation est requise.',
-                    );
-                }
-
-                $job = Job::query()->lockForUpdate()->find($locked->job_id);
-
-                if ($job === null || $job->status !== JobStatus::Active) {
-                    $this->fail(
-                        'status',
-                        'Un ordre de fabrication ne peut être libéré que si son affaire est active.',
                     );
                 }
 
@@ -308,9 +312,23 @@ class WorkOrderService
                 );
             }
 
-            // Verrouiller les documents applicables pour sérialiser avec les
-            // libérations concurrentes. Même ordre de verrouillage (ID croissant)
-            // que dans transitionTo() pour prévenir les interblocages.
+            // Verrouiller l'affaire parent avant les documents applicables
+            // pour sérialiser avec les libérations et créations de documents
+            // concurrentes. Même ordre de verrouillage (Job, puis documents
+            // par ID croissant) que dans transitionTo() pour prévenir les
+            // interblocages.
+            $job = Job::query()->lockForUpdate()->find($locked->job_id);
+
+            if ($job === null || $job->status !== JobStatus::Active) {
+                $this->fail(
+                    'status',
+                    'L\'affaire de cet ordre de fabrication est introuvable ou inactif.',
+                );
+            }
+
+            // Verrouiller les documents applicables par identifiant croissant
+            // pour sérialiser avec les approbations de versions documentaires
+            // concurrentes et prévenir les interblocages.
             $applicableDocumentIds = $this->applicability->applicableDocumentsFor($locked)
                 ->sortBy('id')
                 ->pluck('id')

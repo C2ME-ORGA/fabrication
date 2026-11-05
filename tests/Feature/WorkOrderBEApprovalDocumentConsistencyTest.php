@@ -383,6 +383,153 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $this->assertCount(1, $releaseSnapshots);
     }
 
+    public function test_release_refused_when_document_title_changed_after_be_approval(): void
+    {
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF titre modifié',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan original',
+            'reference' => 'REF-001',
+        ], $this->admin);
+        $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Modifier le titre du document après approbation BE.
+        $this->documents->update($doc, [
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan modifié',
+            'reference' => 'REF-001',
+        ], $this->admin);
+
+        // La libération doit être refusée.
+        $this->expectException(ValidationException::class);
+        $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+
+        // Aucun snapshot de libération créé.
+        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
+            ->where('work_order_id', $workOrder->id)
+            ->where('reason', DocumentSnapshotReason::Release->value)
+            ->get();
+        $this->assertCount(0, $releaseSnapshots);
+    }
+
+    public function test_release_refused_when_document_reference_changed_after_be_approval(): void
+    {
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF ref modifiée',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan',
+            'reference' => 'REF-001',
+        ], $this->admin);
+        $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Modifier la référence du document après approbation BE.
+        $this->documents->update($doc, [
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan',
+            'reference' => 'REF-002',
+        ], $this->admin);
+
+        // La libération doit être refusée.
+        $this->expectException(ValidationException::class);
+        $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+
+        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
+            ->where('work_order_id', $workOrder->id)
+            ->where('reason', DocumentSnapshotReason::Release->value)
+            ->get();
+        $this->assertCount(0, $releaseSnapshots);
+    }
+
+    public function test_release_refused_when_document_category_changed_after_be_approval(): void
+    {
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF catégorie modifiée',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan',
+            'reference' => 'REF-001',
+        ], $this->admin);
+        $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Modifier la catégorie du document après approbation BE.
+        $this->documents->update($doc, [
+            'category' => DocumentCategory::DetailPlan,
+            'title' => 'Plan',
+            'reference' => 'REF-001',
+        ], $this->admin);
+
+        // La libération doit être refusée.
+        $this->expectException(ValidationException::class);
+        $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+
+        $releaseSnapshots = WorkOrderDocumentSnapshot::query()
+            ->where('work_order_id', $workOrder->id)
+            ->where('reason', DocumentSnapshotReason::Release->value)
+            ->get();
+        $this->assertCount(0, $releaseSnapshots);
+    }
+
+    public function test_release_allowed_after_metadata_change_and_new_be_approval(): void
+    {
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF réapprobation métadonnées',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan original',
+            'reference' => 'REF-001',
+        ], $this->admin);
+        $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Modifier les métadonnées après approbation BE.
+        $this->documents->update($doc, [
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan modifié',
+            'reference' => 'REF-001',
+        ], $this->admin);
+
+        // La libération doit être refusée (approbation obsolète).
+        $this->expectException(ValidationException::class);
+        $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+
+        // Nouvelle approbation BE après modification des métadonnées.
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+        $this->assertNotNull($workOrder->be_approved_by);
+
+        // La libération est maintenant autorisée.
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+        $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
+    }
+
     public function test_be_approval_by_non_admin_is_refused(): void
     {
         $workOrder = $this->workOrders->create([

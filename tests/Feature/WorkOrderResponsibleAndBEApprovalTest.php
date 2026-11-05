@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\JobStatus;
 use App\Enums\WorkOrderAuditEvent;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
@@ -215,7 +216,7 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
 
     public function test_release_still_requires_active_job_with_be_approval(): void
     {
-        $job = Job::factory()->create(); // pas active
+        $job = Job::factory()->active()->create();
         $user = User::factory()->admin()->create();
 
         $workOrder = $this->service->create([
@@ -224,6 +225,9 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         ], $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
         $this->service->approveByBE($workOrder, $user);
+
+        // Rendre l'affaire inactif après approbation BE.
+        $job->update(['status' => JobStatus::Closed]);
 
         $this->expectException(ValidationException::class);
 

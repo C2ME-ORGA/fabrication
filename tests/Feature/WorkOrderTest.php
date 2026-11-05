@@ -227,12 +227,15 @@ class WorkOrderTest extends TestCase
 
     public function test_a_work_order_can_only_be_released_when_its_job_is_active(): void
     {
-        $job = Job::factory()->create();
+        $job = Job::factory()->active()->create();
         $user = User::factory()->admin()->create();
         $workOrder = WorkOrder::factory()->create(['job_id' => $job->id]);
 
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
         $this->service->approveByBE($workOrder, $user);
+
+        // Rendre l'affaire inactif après approbation BE.
+        $job->update(['status' => JobStatus::Closed]);
 
         $this->expectException(ValidationException::class);
 

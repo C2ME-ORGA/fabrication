@@ -135,7 +135,8 @@ class DocumentSnapshotService
                 return false;
             }
 
-            // Both have a version: compare version ID, revision and SHA-256.
+            // Both have a version: compare version ID, revision, SHA-256 and
+            // document metadata (category, title, reference).
             if ($currentVersion !== null) {
                 if ($snapshot->document_version_id !== $currentVersion->getKey()) {
                     return false;
@@ -144,6 +145,16 @@ class DocumentSnapshotService
                     return false;
                 }
                 if ($snapshot->sha256 !== $currentVersion->sha256) {
+                    return false;
+                }
+                // Document metadata may have been edited after BE approval.
+                if ($snapshot->category !== $document->category) {
+                    return false;
+                }
+                if ($snapshot->title !== $document->title) {
+                    return false;
+                }
+                if ($snapshot->reference !== $document->reference) {
                     return false;
                 }
             }

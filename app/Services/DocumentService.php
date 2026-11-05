@@ -30,6 +30,17 @@ class DocumentService
         $this->assertAssociation($data['job_id'] ?? null, $data['work_order_id'] ?? null);
 
         return DB::transaction(function () use ($data, $actor): Document {
+            // Verrouiller les parents avant la création pour sérialiser avec
+            // les libérations et approbations BE concurrentes. Même ordre de
+            // verrouillage que dans WorkOrderService (WorkOrder, puis Job)
+            // pour prévenir les interblocages.
+            if (($woId = $data['work_order_id'] ?? null) !== null) {
+                WorkOrder::query()->lockForUpdate()->findOrFail($woId);
+            }
+            if (($jobId = $data['job_id'] ?? null) !== null) {
+                Job::query()->lockForUpdate()->findOrFail($jobId);
+            }
+
             $document = new Document;
 
             $document->fill(Arr::only($data, [

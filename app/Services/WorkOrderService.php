@@ -162,7 +162,12 @@ class WorkOrderService
      */
     public function transitionTo(WorkOrder $workOrder, WorkOrderStatus $target, ?User $actor = null, ?string $comment = null): WorkOrder
     {
-        return DB::transaction(function () use ($workOrder, $target, $actor, $comment): WorkOrder {
+        // L'obsolescence BE doit être auditée après le rollback de la transition
+        // refusée : un audit écrit dans la transaction métier serait annulé.
+        $obsoleteApproval = null;
+
+        try {
+            return DB::transaction(function () use ($workOrder, $target, $actor, $comment, &$obsoleteApproval): WorkOrder {
             $locked = $this->lock($workOrder);
             $from = $locked->status;
 
@@ -225,15 +230,11 @@ class WorkOrderService
                 // vérification et la capture du snapshot de libération.
                 $batchId = $this->getBEApprovalBatchId($locked);
                 if ($batchId !== null && ! $this->documentSnapshots->isBEApprovalStillValid($locked, $batchId)) {
-                    // Tracer l'obsolescence avant de refuser.
-                    $this->audit(
-                        $locked,
-                        WorkOrderAuditEvent::BeApprovalObsolete,
-                        $actor,
-                        $locked->status->value,
-                        $locked->status->value,
-                        'Approbation BE obsolète : les références documentaires ont évolué.',
-                    );
+                    // Mémoriser le contexte ; l'audit sera écrit après rollback.
+                    $obsoleteApproval = [
+                        'work_order_id' => $locked->getKey(),
+                        'status' => $locked->status->value,
+                    ];
 
                     $this->fail(
                         'status',
@@ -272,7 +273,27 @@ class WorkOrderService
             );
 
             return $locked->refresh();
-        }, attempts: 3);
+            }, attempts: 3);
+        } catch (ValidationException $exception) {
+            if ($obsoleteApproval !== null) {
+                // La transaction de libération est désormais annulée. Écrire
+                // l'événement dans une transaction indépendante le rend durable.
+                $workOrderForAudit = WorkOrder::query()->findOrFail($obsoleteApproval['work_order_id']);
+
+                DB::transaction(function () use ($workOrderForAudit, $actor, $obsoleteApproval): void {
+                    $this->audit(
+                        $workOrderForAudit,
+                        WorkOrderAuditEvent::BeApprovalObsolete,
+                        $actor,
+                        $obsoleteApproval['status'],
+                        $obsoleteApproval['status'],
+                        'Approbation BE obsolète : les références documentaires ont évolué.',
+                    );
+                });
+            }
+
+            throw $exception;
+        }
     }
 
     /**

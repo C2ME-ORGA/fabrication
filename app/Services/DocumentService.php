@@ -19,6 +19,7 @@ class DocumentService
 {
     public function __construct(
         protected DocumentAuditService $audit,
+        protected DocumentLockingService $locking,
     ) {}
 
     /**
@@ -30,16 +31,12 @@ class DocumentService
         $this->assertAssociation($data['job_id'] ?? null, $data['work_order_id'] ?? null);
 
         return DB::transaction(function () use ($data, $actor): Document {
-            // Verrouiller les parents avant la création pour sérialiser avec
-            // les libérations et approbations BE concurrentes. Même ordre de
-            // verrouillage que dans WorkOrderService (WorkOrder, puis Job)
-            // pour prévenir les interblocages.
-            if (($woId = $data['work_order_id'] ?? null) !== null) {
-                WorkOrder::query()->lockForUpdate()->findOrFail($woId);
-            }
-            if (($jobId = $data['job_id'] ?? null) !== null) {
-                Job::query()->lockForUpdate()->findOrFail($jobId);
-            }
+            // Ordre commun : WorkOrder(s) -> Job(s) -> Document.
+            $this->locking->lockParents(
+                $data['work_order_id'] ?? null,
+                $data['job_id'] ?? null,
+            );
+            $this->assertAssociation($data['job_id'] ?? null, $data['work_order_id'] ?? null);
 
             $document = new Document;
 
@@ -70,16 +67,23 @@ class DocumentService
         $data = $this->validate($data);
 
         return DB::transaction(function () use ($document, $data, $actor): Document {
-            $locked = Document::query()->lockForUpdate()->findOrFail($document->getKey());
+            // Lire les rattachements sans verrou, verrouiller tous les parents
+            // (anciens et nouveaux), puis verrouiller le Document en dernier.
+            $current = Document::query()->findOrFail($document->getKey());
+            $jobId = array_key_exists('job_id', $data) ? $data['job_id'] : $current->job_id;
+            $workOrderId = array_key_exists('work_order_id', $data) ? $data['work_order_id'] : $current->work_order_id;
+
+            $locked = $this->locking->lockDocument(
+                $current->getKey(),
+                additionalWorkOrderIds: [$workOrderId],
+                additionalJobIds: [$jobId],
+            );
 
             if ($locked->isArchived()) {
                 throw ValidationException::withMessages([
                     'status' => 'Un document archivé ne peut plus être modifié.',
                 ]);
             }
-
-            $jobId = array_key_exists('job_id', $data) ? $data['job_id'] : $locked->job_id;
-            $workOrderId = array_key_exists('work_order_id', $data) ? $data['work_order_id'] : $locked->work_order_id;
 
             $this->assertAssociation($jobId, $workOrderId);
 
@@ -90,17 +94,6 @@ class DocumentService
                 throw ValidationException::withMessages([
                     'job_id' => "L'affaire ou l'OF d'un document versionné ne peut plus être changé.",
                 ]);
-            }
-
-            // Verrouiller les parents (WorkOrder puis Job) pour sérialiser avec
-            // les libérations et approbations BE concurrentes. Même ordre de
-            // verrouillage que dans WorkOrderService pour prévenir les
-            // interblocages.
-            if (($woId = $workOrderId ?? $locked->work_order_id) !== null) {
-                WorkOrder::query()->lockForUpdate()->findOrFail($woId);
-            }
-            if (($jobId = $jobId ?? $locked->job_id) !== null) {
-                Job::query()->lockForUpdate()->findOrFail($jobId);
             }
 
             $locked->fill(Arr::only($data, [
@@ -129,19 +122,13 @@ class DocumentService
     public function archive(Document $document, ?User $actor = null, ?string $comment = null): Document
     {
         return DB::transaction(function () use ($document, $actor, $comment): Document {
-            $locked = Document::query()->lockForUpdate()->findOrFail($document->getKey());
+            // Le verrouillage des parents précède toujours celui du Document.
+            $locked = $this->locking->lockDocument($document->getKey());
 
             if ($locked->isArchived()) {
                 throw ValidationException::withMessages([
                     'status' => 'Ce document est déjà archivé.',
                 ]);
-            }
-
-            // Verrouiller l'affaire parent pour sérialiser avec les libérations
-            // et approbations BE concurrentes. Même ordre de verrouillage que
-            // dans WorkOrderService.
-            if (($jobId = $locked->job_id) !== null) {
-                Job::query()->lockForUpdate()->findOrFail($jobId);
             }
 
             $locked->status = DocumentStatus::Archived;

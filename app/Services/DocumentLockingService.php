@@ -1,11 +1,11 @@
 <?php
 
-namespace App\\Services;
+namespace App\Services;
 
-use App\\Models\\Document;
-use App\\Models\\Job;
-use App\\Models\\WorkOrder;
-use Illuminate\\Validation\\ValidationException;
+use App\Models\Document;
+use App\Models\Job;
+use App\Models\WorkOrder;
+use Illuminate\Validation\ValidationException;
 
 class DocumentLockingService
 {

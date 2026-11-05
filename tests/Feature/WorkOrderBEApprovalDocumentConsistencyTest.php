@@ -573,6 +573,48 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
         $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
     }
 
+    public function test_release_refused_when_metadata_changes_without_approved_version(): void
+    {
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF métadonnées sans version',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan initial',
+            'reference' => 'REF-001',
+        ], $this->admin);
+
+        // Aucun document_version approuvé au moment de l'approbation BE.
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $workOrder = $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        $this->documents->update($doc, [
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan renommé',
+            'reference' => 'REF-001',
+        ], $this->admin);
+
+        // Le changement de métadonnées doit rendre l'approbation BE obsolète,
+        // même si aucune version approuvée n'existait au moment du contrôle.
+        try {
+            $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
+            $this->fail('La libération aurait dû être refusée après modification des métadonnées.');
+        } catch (ValidationException) {
+            $this->assertDatabaseHas('work_order_audit_logs', [
+                'work_order_id' => $workOrder->id,
+                'event' => WorkOrderAuditEvent::BeApprovalObsolete->value,
+            ]);
+        }
+
+        $this->assertSame(0, WorkOrderDocumentSnapshot::query()
+            ->where('work_order_id', $workOrder->id)
+            ->where('reason', DocumentSnapshotReason::Release->value)
+            ->count());
+    }
+
     /**
      * Vérifie, sur MySQL/MariaDB avec une seconde connexion réelle
      * (`mysql_probe`, même pattern que WorkOrderNumberGeneratorTest), que la
@@ -683,7 +725,15 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
                 "La ligne {$table}#{$id} aurait dû être verrouillée par la libération en cours."
             );
         } catch (QueryException $exception) {
-            $this->assertNotSame('', $exception->getMessage());
+            // MySQL 8 returns 3572 for NOWAIT; MariaDB commonly reports
+            // 1205 (lock wait timeout). Do not accept unrelated SQL errors
+            // as evidence that the row is locked.
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            $this->assertContains(
+                $driverCode,
+                [1205, 3572],
+                "Erreur SQL inattendue pendant la vérification du verrou : {$exception->getMessage()}"
+            );
         } finally {
             DB::purge('mysql_probe');
         }

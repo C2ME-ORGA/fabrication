@@ -9,6 +9,7 @@ use App\Filament\Resources\Documents\RelationManagers\AuditLogsRelationManager;
 use App\Filament\Resources\Documents\RelationManagers\VersionsRelationManager;
 use App\Filament\Resources\Jobs\Pages\ViewJob;
 use App\Filament\Resources\Jobs\RelationManagers\DocumentsRelationManager;
+use App\Filament\Resources\WorkOrders\Pages\ListWorkOrders;
 use App\Filament\Resources\WorkOrders\Pages\ViewWorkOrder;
 use App\Models\Document;
 use App\Models\Job;
@@ -165,6 +166,22 @@ class DocumentFilamentTest extends TestCase
             ->assertOk()
             ->assertSee($workOrder->number)
             ->assertSee('utilisent encore une révision antérieure');
+    }
+
+
+    public function test_the_be_approval_action_is_visible_for_an_unapproved_draft(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $job = Job::factory()->active()->create();
+        $workOrder = app(WorkOrderService::class)->create([
+            'job_id' => $job->id,
+            'title' => 'OF approbation visible',
+        ], $admin);
+
+        $this->actingAs($admin);
+
+        Livewire::test(ListWorkOrders::class)
+            ->assertTableActionVisible('approveBE', $workOrder);
     }
 
     public function test_the_work_order_view_offers_the_explicit_re_review_action(): void

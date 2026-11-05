@@ -181,6 +181,25 @@ class WorkOrderService
                     );
                 }
 
+                // Vérifier que l'état documentaire n'a pas évolué depuis l'approbation BE.
+                $batchId = $this->getBEApprovalBatchId($locked);
+                if ($batchId !== null && ! $this->documentSnapshots->isBEApprovalStillValid($locked, $batchId)) {
+                    // Tracer l'obsolescence avant de refuser.
+                    $this->audit(
+                        $locked,
+                        WorkOrderAuditEvent::BeApprovalObsolete,
+                        $actor,
+                        $locked->status->value,
+                        $locked->status->value,
+                        'Approbation BE obsolète : les références documentaires ont évolué.',
+                    );
+
+                    $this->fail(
+                        'status',
+                        'L\'approbation du bureau d\'études est obsolète : les références documentaires ont évolué depuis l\'approbation. Une nouvelle approbation est requise.',
+                    );
+                }
+
                 $job = Job::query()->lockForUpdate()->find($locked->job_id);
 
                 if ($job === null || $job->status !== JobStatus::Active) {
@@ -262,6 +281,18 @@ class WorkOrderService
 
             $locked->be_approved_by = $approver->getKey();
             $locked->be_approved_at = now();
+
+            // Capture the document state at BE approval time.
+            [$snapshots, $batchId] = $this->documentSnapshots->captureForBEApproval($locked, $approver);
+
+            $locked->be_approval_batch_id = $batchId;
+
+            // Link the first snapshot as the approval reference.
+            $firstSnapshot = $snapshots->first();
+            if ($firstSnapshot !== null) {
+                $locked->be_approval_snapshot_id = $firstSnapshot->getKey();
+            }
+
             $locked->save();
 
             // Tracer l'approbation dans le journal d'audit.
@@ -272,6 +303,7 @@ class WorkOrderService
                 null,
                 $locked->status->value,
                 'Approbation bureau d\'études',
+                ['be_approval_batch_id' => $batchId],
             );
 
             return $locked->refresh();
@@ -386,6 +418,8 @@ class WorkOrderService
         'responsible_id',
         'be_approved_by',
         'be_approved_at',
+        'be_approval_batch_id',
+        'be_approval_snapshot_id',
     ];
 
     /**
@@ -463,6 +497,16 @@ class WorkOrderService
             WorkOrderStatus::Cancelled => WorkOrderAuditEvent::Cancelled,
             WorkOrderStatus::Draft => WorkOrderAuditEvent::Created,
         };
+    }
+
+    /**
+     * Récupère le batch UUID de l'approbation BE actuelle, stocké directement
+     * sur l'OF. Permet de détecter l'obsolescence même quand aucun document
+     * n'était applicable au moment de l'approbation (aucun snapshot créé).
+     */
+    protected function getBEApprovalBatchId(WorkOrder $workOrder): ?string
+    {
+        return $workOrder->be_approval_batch_id;
     }
 
     protected function fail(string $field, string $message): never

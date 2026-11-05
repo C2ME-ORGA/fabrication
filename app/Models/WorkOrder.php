@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'responsible_id',
     'be_approved_by',
     'be_approved_at',
+    'be_approval_batch_id',
+    'be_approval_snapshot_id',
 ])]
 class WorkOrder extends Model
 {
@@ -44,6 +46,8 @@ class WorkOrder extends Model
         'responsible_id',
         'be_approved_by',
         'be_approved_at',
+        'be_approval_batch_id',
+        'be_approval_snapshot_id',
     ];
 
     /**

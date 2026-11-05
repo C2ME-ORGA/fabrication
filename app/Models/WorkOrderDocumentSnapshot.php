@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'captured_at',
     'reason',
     'comment',
+    'be_approval_batch_id',
 ])]
 class WorkOrderDocumentSnapshot extends Model
 {

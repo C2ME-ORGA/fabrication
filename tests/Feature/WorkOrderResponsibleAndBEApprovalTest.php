@@ -19,22 +19,13 @@ use Tests\TestCase;
 class WorkOrderResponsibleAndBEApprovalTest extends TestCase
 {
     use RefreshDatabase;
-    protected WorkOrderService $service;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->service = app(WorkOrderService::class);
-    }
-
     public function test_creation_with_responsible_records_it(): void
     {
         $job = Job::factory()->active()->create();
         $user = User::factory()->admin()->create();
         $responsible = User::factory()->create();
 
-        $workOrder = $this->service->create([
+        $workOrder = app(WorkOrderService::class)->create([
             'job_id' => $job->id,
             'title' => 'OF avec responsable',
             'responsible_id' => $responsible->id,

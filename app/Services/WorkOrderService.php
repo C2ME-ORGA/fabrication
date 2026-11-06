@@ -180,7 +180,6 @@ class WorkOrderService
                 }
 
                 if ($target === WorkOrderStatus::Released) {
-                    // Vérification de l'approbation BE avant libération.
                     if ($locked->be_approved_by === null || $locked->be_approved_at === null) {
                         $this->fail(
                             'status',
@@ -229,8 +228,9 @@ class WorkOrderService
                     // approbation concurrente ne peut modifier l'état entre la
                     // vérification et la capture du snapshot de libération.
                     $batchId = $this->getBEApprovalBatchId($locked);
+
                     if ($batchId !== null && ! $this->documentSnapshots->isBEApprovalStillValid($locked, $batchId)) {
-                        // Mémoriser le contexte ; l'audit sera écrit après rollback.
+                        // L'audit est écrit après le rollback de cette transaction.
                         $obsoleteApproval = [
                             'work_order_id' => $locked->getKey(),
                             'status' => $locked->status->value,
@@ -276,8 +276,6 @@ class WorkOrderService
             }, attempts: 3);
         } catch (ValidationException $exception) {
             if ($obsoleteApproval !== null) {
-                // La transaction de libération est désormais annulée. Écrire
-                // l'événement dans une transaction indépendante le rend durable.
                 $workOrderForAudit = WorkOrder::query()->findOrFail($obsoleteApproval['work_order_id']);
 
                 DB::transaction(function () use ($workOrderForAudit, $actor, $obsoleteApproval): void {

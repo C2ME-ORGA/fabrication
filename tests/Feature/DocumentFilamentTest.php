@@ -168,7 +168,6 @@ class DocumentFilamentTest extends TestCase
             ->assertSee('utilisent encore une révision antérieure');
     }
 
-
     public function test_the_be_approval_action_is_visible_for_an_unapproved_draft(): void
     {
         $admin = User::factory()->admin()->create();

@@ -170,7 +170,7 @@ class WorkOrderService
             return DB::transaction(function () use ($workOrder, $target, $actor, $comment, &$obsoleteApproval): WorkOrder {
                 $locked = $this->lock($workOrder);
                 $from = $locked->status;
-    
+
                 if (! $from->canTransitionTo($target)) {
                     // Transition interdite : aucune entrée d'audit n'est enregistrée.
                     $this->fail(
@@ -178,7 +178,7 @@ class WorkOrderService
                         "Transition de statut interdite : « {$from->getLabel()} » vers « {$target->getLabel()} ».",
                     );
                 }
-    
+
                 if ($target === WorkOrderStatus::Released) {
                     // Vérification de l'approbation BE avant libération.
                     if ($locked->be_approved_by === null || $locked->be_approved_at === null) {
@@ -187,7 +187,7 @@ class WorkOrderService
                             'Un ordre de fabrication ne peut être libéré sans approbation du bureau d\'études.',
                         );
                     }
-    
+
                     // Une approbation BE antérieure à l'introduction des snapshots
                     // documentaires (be_approval_batch_id = null) doit être renouvelée.
                     // Un OF historique approuvé sans snapshot ne peut pas être libéré
@@ -198,20 +198,20 @@ class WorkOrderService
                             'L\'approbation du bureau d\'études n\'est pas associée à un snapshot documentaire. Une nouvelle approbation est requise.',
                         );
                     }
-    
+
                     // Verrouiller l'affaire parent avant les documents applicables
                     // pour sérialiser avec les créations de documents concurrentes
                     // et prévenir les interblocages (même ordre que dans
                     // DocumentService::create() et approveByBE()).
                     $job = Job::query()->lockForUpdate()->find($locked->job_id);
-    
+
                     if ($job === null || $job->status !== JobStatus::Active) {
                         $this->fail(
                             'status',
                             'Un ordre de fabrication ne peut être libéré que si son affaire est active.',
                         );
                     }
-    
+
                     // Verrouiller les documents applicables par identifiant croissant
                     // pour sérialiser avec les approbations de versions documentaires
                     // concurrentes et prévenir les interblocages.
@@ -219,11 +219,11 @@ class WorkOrderService
                         ->sortBy('id')
                         ->pluck('id')
                         ->toArray();
-    
+
                     foreach ($applicableDocumentIds as $documentId) {
                         Document::query()->lockForUpdate()->findOrFail($documentId);
                     }
-    
+
                     // Vérifier que l'état documentaire n'a pas évolué depuis
                     // l'approbation BE. Les documents sont verrouillés, donc aucune
                     // approbation concurrente ne peut modifier l'état entre la
@@ -235,33 +235,33 @@ class WorkOrderService
                             'work_order_id' => $locked->getKey(),
                             'status' => $locked->status->value,
                         ];
-    
+
                         $this->fail(
                             'status',
                             'L\'approbation du bureau d\'études est obsolète : les références documentaires ont évolué depuis l\'approbation. Une nouvelle approbation est requise.',
                         );
                     }
-    
+
                     $locked->released_by = $actor?->getKey() ?? Auth::id();
                     $locked->released_at = now();
-    
+
                     // Freeze the approved document versions applicable at release.
                     // The snapshot rows are written in this same transaction, on
                     // documents already locked above.
                     $this->documentSnapshots->captureForRelease($locked, $actor);
                 }
-    
+
                 if ($target === WorkOrderStatus::InProgress && $locked->actual_start_at === null) {
                     $locked->actual_start_at = now();
                 }
-    
+
                 if ($target === WorkOrderStatus::Completed) {
                     $locked->actual_end_at ??= now();
                 }
-    
+
                 $locked->status = $target;
                 $locked->save();
-    
+
                 // Journal de la transition (dans la même transaction, annulé si le métier échoue).
                 $this->audit(
                     $locked,
@@ -271,9 +271,9 @@ class WorkOrderService
                     $target->value,
                     $comment,
                 );
-    
+
                 return $locked->refresh();
-                }, attempts: 3);
+            }, attempts: 3);
         } catch (ValidationException $exception) {
             if ($obsoleteApproval !== null) {
                 // La transaction de libération est désormais annulée. Écrire
@@ -489,17 +489,20 @@ class WorkOrderService
      * @param  array<string, mixed>  $data
      */
     /**
-     * Champs que le service métier est autorisé à assigner via sa liste
-     * blanche explicite, même s'ils figurent dans PROTECTED_FIELDS.
+     * Seul champ protégé que le service accepte depuis l'entrée appelante :
+     * le responsable opérationnel, assigné via la liste blanche de create()
+     * et update().
+     *
+     * Les champs d'approbation BE (be_approved_by, be_approved_at,
+     * be_approval_batch_id, be_approval_snapshot_id) sont écrits directement
+     * par le service dans approveByBE() et ne doivent jamais pouvoir être
+     * fournis par un formulaire ou un payload : ils restent donc rejetés par
+     * assertNoProtectedFields().
      *
      * @var array<string>
      */
     protected const SERVICE_ASSIGNABLE_FIELDS = [
         'responsible_id',
-        'be_approved_by',
-        'be_approved_at',
-        'be_approval_batch_id',
-        'be_approval_snapshot_id',
     ];
 
     /**

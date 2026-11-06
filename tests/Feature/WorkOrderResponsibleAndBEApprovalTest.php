@@ -28,8 +28,6 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $this->service = app(WorkOrderService::class);
     }
 
-    // === Responsable opérationnel ===
-
     public function test_creation_with_responsible_records_it(): void
     {
         $job = Job::factory()->active()->create();
@@ -124,8 +122,6 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
             'responsible_id' => $responsible->id,
         ], $user);
     }
-
-    // === Approbation bureau d'études ===
 
     public function test_be_approval_fields_cannot_be_mass_assigned(): void
     {

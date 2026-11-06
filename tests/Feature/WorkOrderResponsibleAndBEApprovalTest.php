@@ -128,7 +128,6 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
 
     // === Approbation bureau d'études ===
 
-
     public function test_be_approval_fields_cannot_be_mass_assigned(): void
     {
         $job = Job::factory()->active()->create();

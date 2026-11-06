@@ -19,7 +19,6 @@ use Tests\TestCase;
 class WorkOrderResponsibleAndBEApprovalTest extends TestCase
 {
     use RefreshDatabase;
-
     protected WorkOrderService $service;
 
     protected function setUp(): void

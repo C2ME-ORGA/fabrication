@@ -48,9 +48,9 @@ return new class extends Migration
         // liées à un OF encore présent. Les événements orphelins (work_order_id = NULL)
         // conservent une valeur NULL : aucun numéro n'est inventé pour eux.
         DB::statement(
-            "UPDATE work_order_audit_logs SET work_order_number = (
+            'UPDATE work_order_audit_logs SET work_order_number = (
                 SELECT number FROM work_orders WHERE work_orders.id = work_order_audit_logs.work_order_id
-            ) WHERE work_order_id IS NOT NULL AND work_order_number IS NULL"
+            ) WHERE work_order_id IS NOT NULL AND work_order_number IS NULL'
         );
     }
 

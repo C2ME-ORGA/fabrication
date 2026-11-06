@@ -19,6 +19,7 @@ use Tests\TestCase;
 class WorkOrderResponsibleAndBEApprovalTest extends TestCase
 {
     use RefreshDatabase;
+
     public function test_creation_with_responsible_records_it(): void
     {
         $job = Job::factory()->active()->create();

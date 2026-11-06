@@ -9,7 +9,9 @@ use App\Models\Job;
 use App\Models\User;
 use App\Models\WorkOrder;
 use App\Services\WorkOrderService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -303,6 +305,61 @@ class WorkOrderTest extends TestCase
         $job->update(['status' => JobStatus::Closed]);
 
         $this->assertFalse($job->fresh()->acceptsNewWorkOrders());
+    }
+
+    /**
+     * Vérifie qu'une transition verrouille la ligne work_orders jusqu'à la fin
+     * de sa transaction : une seconde connexion ne peut pas modifier l'OF de
+     * manière concurrente, et l'audit reflète l'état réellement enregistré.
+     */
+    public function test_concurrent_status_transition_is_serialized_on_mysql(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped(
+                'Le verrouillage concurrent MySQL ne peut pas être vérifié sur '
+                .DB::connection()->getDriverName().'. Lancez ce test avec une base MySQL dédiée.',
+            );
+        }
+
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+        $workOrder = WorkOrder::factory()->create(['job_id' => $job->id]);
+
+        // La transition verrouille la ligne work_orders dans la transaction de
+        // test ; le verrou reste tenu jusqu'au rollback final.
+        $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+
+        $this->assertSame(WorkOrderStatus::Ready, $workOrder->status);
+        $this->assertSame(WorkOrderStatus::Ready, $workOrder->fresh()->status);
+
+        $this->assertDatabaseHas('work_order_audit_logs', [
+            'work_order_id' => $workOrder->id,
+            'event' => 'ready',
+            'from_status' => 'draft',
+            'to_status' => 'ready',
+        ]);
+
+        $connection = config('database.connections.mysql');
+        config(['database.connections.mysql_probe' => $connection]);
+        DB::purge('mysql_probe');
+
+        try {
+            DB::connection('mysql_probe')->statement(
+                'select * from work_orders where id = ? for update nowait',
+                [$workOrder->id],
+            );
+
+            $this->fail('La ligne work_orders aurait dû rester verrouillée pendant la transition.');
+        } catch (QueryException $exception) {
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            $this->assertContains(
+                $driverCode,
+                [1205, 3572],
+                "Erreur SQL inattendue pendant la vérification du verrou : {$exception->getMessage()}",
+            );
+        } finally {
+            DB::purge('mysql_probe');
+        }
     }
 
     protected function expectedNumber(int $sequence): string

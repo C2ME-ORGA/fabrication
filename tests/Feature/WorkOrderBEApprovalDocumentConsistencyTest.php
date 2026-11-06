@@ -603,12 +603,18 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
             $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
             $this->fail('La libération aurait dû être refusée après modification des métadonnées.');
         } catch (ValidationException) {
+            // L'audit d'obsolescence est écrit hors de la transaction annulée :
+            // il doit survivre au rollback de la libération refusée.
             $this->assertDatabaseHas('work_order_audit_logs', [
                 'work_order_id' => $workOrder->id,
                 'event' => WorkOrderAuditEvent::BeApprovalObsolete->value,
             ]);
         }
 
+        // La libération refusée ne change pas le statut de l'OF.
+        $this->assertSame(WorkOrderStatus::Ready, $workOrder->fresh()->status);
+
+        // Et ne laisse aucun snapshot de libération valide.
         $this->assertSame(0, WorkOrderDocumentSnapshot::query()
             ->where('work_order_id', $workOrder->id)
             ->where('reason', DocumentSnapshotReason::Release->value)
@@ -716,6 +722,42 @@ class WorkOrderBEApprovalDocumentConsistencyTest extends TestCase
             ->value('document_version_id');
 
         $this->assertSame($versionA->id, $releaseVersionId);
+    }
+
+    /**
+     * LOT 3-C : l'approbation BE verrouille le Job parent et les documents
+     * applicables. Une modification de métadonnées ou l'approbation d'une
+     * version concurrente (qui acquièrent les mêmes verrous) est donc
+     * sérialisée avec l'approbation BE.
+     */
+    public function test_be_approval_locks_documents_and_job_on_mysql(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped(
+                'Test de concurrence réel nécessite MySQL/MariaDB. '
+                .'Lancez avec phpunit.mysql.xml et une base de test dédiée.'
+            );
+        }
+
+        $workOrder = $this->workOrders->create([
+            'job_id' => $this->job->id,
+            'title' => 'OF verrou BE',
+        ], $this->admin);
+
+        $doc = $this->documents->create([
+            'job_id' => $this->job->id,
+            'category' => DocumentCategory::AssemblyPlan,
+            'title' => 'Plan applicable',
+        ], $this->admin);
+        $this->approvedVersion($doc, 'A', $this->admin);
+
+        $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $this->workOrders->approveByBE($workOrder, $this->admin);
+
+        // Les verrous acquis par approveByBE() restent tenus dans la
+        // transaction de test jusqu'au rollback final.
+        $this->assertProbeCannotLock('jobs', $this->job->id);
+        $this->assertProbeCannotLock('documents', $doc->id);
     }
 
     /**

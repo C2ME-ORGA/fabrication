@@ -57,4 +57,48 @@ class DatabaseSchemaTest extends TestCase
         $this->assertSame('draft', $workOrder->getRawOriginal('status'));
         $this->assertSame('normal', $workOrder->getRawOriginal('priority'));
     }
+
+    public function test_be_approval_columns_and_constraints_are_present(): void
+    {
+        foreach ([
+            'responsible_id',
+            'be_approved_by',
+            'be_approved_at',
+            'be_approval_batch_id',
+            'be_approval_snapshot_id',
+        ] as $column) {
+            $this->assertTrue(
+                Schema::hasColumn('work_orders', $column),
+                "La colonne work_orders.{$column} est absente.",
+            );
+        }
+
+        $this->assertTrue(Schema::hasColumn('work_order_document_snapshots', 'be_approval_batch_id'));
+
+        // Les colonnes de version sont nullable pour représenter un document
+        // applicable sans version approuvée au moment de l'approbation BE.
+        $nullable = [];
+        foreach (Schema::getColumns('work_order_document_snapshots') as $column) {
+            $nullable[$column['name']] = (bool) $column['nullable'];
+        }
+
+        foreach (['document_version_id', 'revision', 'version_number', 'sha256'] as $name) {
+            $this->assertTrue($nullable[$name], "La colonne {$name} doit être nullable.");
+        }
+
+        // Index du batch d'approbation BE.
+        $batchIndexed = collect(Schema::getIndexes('work_order_document_snapshots'))
+            ->contains(fn (array $index): bool => in_array('be_approval_batch_id', $index['columns'], true));
+        $this->assertTrue($batchIndexed, 'La colonne be_approval_batch_id doit être indexée.');
+
+        // Clé étrangère de rattachement du snapshot d'approbation.
+        $foreignKey = collect(Schema::getForeignKeys('work_orders'))
+            ->contains(fn (array $key): bool => in_array('be_approval_snapshot_id', $key['columns'], true));
+        $this->assertTrue($foreignKey, 'La clé étrangère be_approval_snapshot_id doit exister.');
+
+        // Unicité du numéro d'OF garantie par la base.
+        $uniqueNumber = collect(Schema::getIndexes('work_orders'))
+            ->contains(fn (array $index): bool => $index['unique'] && $index['columns'] === ['number']);
+        $this->assertTrue($uniqueNumber, "Le numéro d'OF doit être unique en base.");
+    }
 }

@@ -492,4 +492,64 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $this->assertInstanceOf(User::class, $workOrder->beApprover);
         $this->assertSame($user->id, $workOrder->beApprover->id);
     }
+
+    /**
+     * Les champs d'approbation BE sont protégés : ils ne peuvent jamais être
+     * fournis par un formulaire ou un payload, ni à la création ni à la
+     * modification. Seul le service les écrit via approveByBE().
+     */
+    public function test_be_approval_fields_cannot_be_mass_assigned(): void
+    {
+        $job = Job::factory()->active()->create();
+        $user = User::factory()->admin()->create();
+
+        // Création : chaque champ BE fourni doit être rejeté.
+        foreach ([
+            'be_approved_by' => $user->id,
+            'be_approved_at' => now(),
+            'be_approval_batch_id' => 'forged-batch',
+            'be_approval_snapshot_id' => 1,
+        ] as $field => $value) {
+            try {
+                $this->service->create([
+                    'job_id' => $job->id,
+                    'title' => "OF masse assignée {$field}",
+                    $field => $value,
+                ], $user);
+
+                $this->fail("La création aurait dû rejeter le champ protégé {$field}.");
+            } catch (ValidationException) {
+                // attendu
+            }
+        }
+
+        $this->assertDatabaseMissing('work_orders', ['title' => 'OF masse assignée be_approved_by']);
+
+        // Modification : chaque champ BE fourni doit également être rejeté.
+        $workOrder = $this->service->create([
+            'job_id' => $job->id,
+            'title' => 'OF champs protégés',
+        ], $user);
+
+        foreach ([
+            'be_approved_by' => $user->id,
+            'be_approved_at' => now(),
+            'be_approval_batch_id' => 'forged-batch',
+            'be_approval_snapshot_id' => 1,
+        ] as $field => $value) {
+            try {
+                $this->service->update($workOrder, [$field => $value], $user);
+
+                $this->fail("L'update aurait dû rejeter le champ protégé {$field}.");
+            } catch (ValidationException) {
+                // attendu
+            }
+        }
+
+        $fresh = $workOrder->fresh();
+        $this->assertNull($fresh->be_approved_by);
+        $this->assertNull($fresh->be_approved_at);
+        $this->assertNull($fresh->be_approval_batch_id);
+        $this->assertNull($fresh->be_approval_snapshot_id);
+    }
 }

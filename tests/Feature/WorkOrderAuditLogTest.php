@@ -97,6 +97,10 @@ class WorkOrderAuditLogTest extends TestCase
         ];
 
         foreach ($expectedTransitions as $step) {
+            if ($step['target'] === WorkOrderStatus::Released) {
+                $this->service->approveByBE($workOrder, $user);
+            }
+
             $workOrder = $this->service->transitionTo($workOrder, $step['target'], $user);
 
             $this->assertDatabaseHas('work_order_audit_logs', [
@@ -124,6 +128,7 @@ class WorkOrderAuditLogTest extends TestCase
         $user = User::factory()->admin()->create();
         $workOrder = WorkOrder::factory()->create(['job_id' => $job->id]);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Ready, $user);
+        $this->service->approveByBE($workOrder, $user);
         $workOrder = $this->service->transitionTo($workOrder, WorkOrderStatus::Released, $user);
 
         $previousEntryCount = WorkOrderAuditLog::query()->where('work_order_id', $workOrder->id)->count();

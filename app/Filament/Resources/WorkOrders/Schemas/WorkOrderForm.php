@@ -42,6 +42,12 @@ class WorkOrderForm
                                     ->exists()
                             )
                             ->helperText('Seules les affaires ouvertes acceptent de nouveaux OF.'),
+                        Select::make('responsible_id')
+                            ->label('Responsable opérationnel')
+                            ->relationship('responsible', 'name')
+                            ->searchable()
+                            ->nullable()
+                            ->helperText('Personne chargée du suivi opérationnel de la fabrication. Modifiable tant que l\'OF n\'est pas gelé.'),
                         TextInput::make('title')
                             ->label('Désignation')
                             ->required()

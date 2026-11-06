@@ -13,6 +13,9 @@ use Filament\Support\Contracts\HasLabel;
 enum WorkOrderAuditEvent: string implements HasLabel
 {
     case Created = 'created';
+    case BeApproved = 'be_approved';
+    case BeApprovalInvalidated = 'be_approval_invalidated';
+    case BeApprovalObsolete = 'be_approval_obsolete';
     case Ready = 'ready';
     case Released = 'released';
     case Started = 'started';
@@ -24,6 +27,9 @@ enum WorkOrderAuditEvent: string implements HasLabel
     {
         return match ($this) {
             self::Created => 'Création de l\'OF',
+            self::BeApproved => 'Approbation du bureau d\'études',
+            self::BeApprovalInvalidated => 'Invalidation de l\'approbation BE',
+            self::BeApprovalObsolete => 'Obsolescence de l\'approbation BE',
             self::Ready => 'Passage à l\'état « Prêt »',
             self::Released => 'Libération de l\'OF',
             self::Started => 'Démarrage des travaux',

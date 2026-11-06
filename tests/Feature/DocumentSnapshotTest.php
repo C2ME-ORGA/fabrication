@@ -146,7 +146,8 @@ class DocumentSnapshotTest extends TestCase
 
         $this->assertCount(1, $workOrder->documentSnapshots()->where('reason', 'release')->get());
         $this->assertSame($versionA->id, $workOrder->documentSnapshots()->where('reason', 'release')->first()->document_version_id);
-        $this->assertCount(2, $workOrder->documentSnapshots()->get());
+        // 1 release snapshot + 1 BE approval snapshot + 1 re-review snapshot.
+        $this->assertCount(3, $workOrder->documentSnapshots()->get());
         $this->assertDatabaseHas('document_audit_logs', [
             'work_order_id' => $workOrder->id,
             'action' => 'documents_re_reviewed',
@@ -208,7 +209,10 @@ class DocumentSnapshotTest extends TestCase
         $workOrder = $this->release($workOrder);
 
         $this->assertSame(WorkOrderStatus::Released, $workOrder->status);
-        $this->assertCount(0, $workOrder->documentSnapshots);
+        // Pas de snapshot de libération car le document n'a pas de version approuvée.
+        $this->assertCount(0, $workOrder->documentSnapshots()->where('reason', 'release')->get());
+        // Un snapshot d'approbation BE est créé même sans version approuvée.
+        $this->assertCount(1, $workOrder->documentSnapshots()->where('reason', 'be_approval')->get());
     }
 
     protected function createWorkOrder(): WorkOrder
@@ -222,6 +226,7 @@ class DocumentSnapshotTest extends TestCase
     protected function release(WorkOrder $workOrder): WorkOrder
     {
         $workOrder = $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Ready, $this->admin);
+        $this->workOrders->approveByBE($workOrder, $this->admin);
 
         return $this->workOrders->transitionTo($workOrder, WorkOrderStatus::Released, $this->admin);
     }

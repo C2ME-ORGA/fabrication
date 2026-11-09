@@ -199,10 +199,11 @@ class WorkOrderOperationServiceTest extends TestCase
         );
     }
 
-    public function test_an_operation_can_be_cancelled_from_ready_paused_and_blocked(): void
+    public function test_an_operation_can_be_cancelled_from_ready_in_progress_paused_and_blocked(): void
     {
-        [$workOrder, $operations] = $this->releasedGraph(['A' => [], 'B' => [], 'C' => []]);
+        [$workOrder, $operations] = $this->releasedGraph(['A' => [], 'B' => [], 'C' => [], 'D' => []]);
 
+        $inProgress = $this->service->start($operations['D'], $this->operator);
         $paused = $this->service->pause($this->service->start($operations['B'], $this->operator), $this->operator);
         $blocked = $this->service->block($this->service->start($operations['C'], $this->operator), $this->operator, 'Bloquée');
 
@@ -211,7 +212,7 @@ class WorkOrderOperationServiceTest extends TestCase
             'cancel_reason',
         );
 
-        foreach ([$operations['A'], $paused, $blocked] as $index => $operation) {
+        foreach ([$operations['A'], $inProgress, $paused, $blocked] as $index => $operation) {
             $cancelled = $this->service->cancel($operation->fresh(), $this->admin, "Annulation {$index}");
 
             $this->assertSame(WorkshopOperationStatus::Cancelled, $cancelled->status);
@@ -222,6 +223,26 @@ class WorkOrderOperationServiceTest extends TestCase
                 'user_id' => $this->admin->getKey(),
             ]);
         }
+    }
+
+    public function test_cancelling_an_in_progress_operation_requires_no_active_timer(): void
+    {
+        [, $operations] = $this->releasedGraph(['A' => []]);
+
+        $operation = $this->service->start($operations['A'], $this->operator);
+
+        OperationTimeEntry::factory()
+            ->active()
+            ->forOperation($operation)
+            ->forUser($this->operator)
+            ->create();
+
+        $this->assertValidationFails(
+            fn () => $this->service->cancel($operation->fresh(), $this->admin, 'Annulation avec chrono'),
+            'time_entries',
+        );
+
+        $this->assertSame(WorkshopOperationStatus::InProgress, $operation->fresh()->status);
     }
 
     public function test_completion_propagates_ready_through_parallel_and_multiple_dependencies(): void
@@ -420,7 +441,6 @@ class WorkOrderOperationServiceTest extends TestCase
             fn () => $this->service->unblock($inProgress, $this->admin),
             fn () => $this->service->complete($ready, $this->operator),
             fn () => $this->service->complete($completed, $this->operator),
-            fn () => $this->service->cancel($inProgress, $this->admin, 'Motif'),
             fn () => $this->service->start($completed, $this->operator),
             fn () => $this->service->start($cancelled, $this->operator),
         ];

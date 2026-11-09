@@ -11,6 +11,8 @@ use App\Models\User;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderOperation;
 use App\Services\OperationTimerService;
+use App\Services\WorkOrderOperationService;
+use App\Services\WorkOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -146,6 +148,46 @@ class OperationTimerServiceTest extends TestCase
         $draftWorkOrder = WorkOrder::factory()->create();
         $draftOperation = $this->operation(WorkshopOperationStatus::InProgress, $draftWorkOrder);
         $this->assertValidationFails(fn () => $this->service->start($draftOperation, $operator), 'status');
+    }
+
+    public function test_a_work_order_cannot_be_cancelled_while_a_timer_is_active(): void
+    {
+        $operator = User::factory()->create();
+        $admin = User::factory()->admin()->create();
+        $operation = $this->operation();
+        $workOrder = $operation->workOrder;
+
+        $this->service->start($operation, $operator);
+
+        $this->assertValidationFails(
+            fn () => app(WorkOrderService::class)->transitionTo($workOrder, WorkOrderStatus::Cancelled, $admin),
+            'time_entries',
+        );
+
+        $this->assertSame(WorkOrderStatus::Released, $workOrder->fresh()->status);
+        $this->assertSame(1, OperationTimeEntry::query()->whereNull('ended_at')->count());
+
+        $this->service->stop($operation->fresh(), $operator);
+
+        $this->assertValidationFails(
+            fn () => app(WorkOrderService::class)->transitionTo($workOrder->fresh(), WorkOrderStatus::Cancelled, $admin),
+            'operations',
+        );
+
+        app(WorkOrderOperationService::class)->cancel(
+            $operation->fresh(),
+            $admin,
+            'Opération annulée avant la clôture de l\'OF',
+        );
+
+        $cancelled = app(WorkOrderService::class)->transitionTo(
+            $workOrder->fresh(),
+            WorkOrderStatus::Cancelled,
+            $admin,
+            'Annulation après arrêt des chronos',
+        );
+
+        $this->assertSame(WorkOrderStatus::Cancelled, $cancelled->status);
     }
 
     protected function operation(

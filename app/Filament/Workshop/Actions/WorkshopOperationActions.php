@@ -134,6 +134,7 @@ class WorkshopOperationActions
             ])
             ->visible(fn (WorkOrderOperation $record): bool => in_array($record->status, [
                 WorkshopOperationStatus::Ready,
+                WorkshopOperationStatus::InProgress,
                 WorkshopOperationStatus::Paused,
                 WorkshopOperationStatus::Blocked,
             ], true) && auth()->user()?->can('cancel', $record) === true)

@@ -2,9 +2,9 @@
 
 namespace App\Filament\Workshop\Resources\WorkshopOperations\Tables;
 
-use App\Enums\WorkOrderStatus;
 use App\Enums\WorkshopOperationStatus;
 use App\Filament\Workshop\Actions\WorkshopOperationActions;
+use App\Filament\Workshop\Resources\WorkshopOperations\WorkshopOperationResource;
 use App\Models\Job;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderOperation;
@@ -97,7 +97,7 @@ class WorkshopOperationsTable
                 SelectFilter::make('work_order_id')
                     ->label('OF')
                     ->options(fn (): array => WorkOrder::query()
-                        ->whereIn('status', self::activeWorkOrderStatuses())
+                        ->whereIn('status', WorkshopOperationResource::visibleWorkOrderStatuses())
                         ->orderBy('number')
                         ->pluck('number', 'id')
                         ->all())
@@ -114,7 +114,7 @@ class WorkshopOperationsTable
                     ->options(fn (): array => Job::query()
                         ->whereHas('workOrders', fn (Builder $query): Builder => $query->whereIn(
                             'status',
-                            self::activeWorkOrderStatuses(),
+                            WorkshopOperationResource::visibleWorkOrderStatuses(),
                         ))
                         ->orderBy('code')
                         ->pluck('code', 'id')
@@ -131,7 +131,7 @@ class WorkshopOperationsTable
                     ->options(fn (): array => WorkOrderOperation::query()
                         ->whereHas('workOrder', fn (Builder $query): Builder => $query->whereIn(
                             'status',
-                            self::activeWorkOrderStatuses(),
+                            WorkshopOperationResource::visibleWorkOrderStatuses(),
                         ))
                         ->distinct()
                         ->orderBy('code')
@@ -168,17 +168,5 @@ class WorkshopOperationsTable
                 WorkshopOperationActions::stopTimer(),
             ])
             ->toolbarActions([]);
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    protected static function activeWorkOrderStatuses(): array
-    {
-        return [
-            WorkOrderStatus::Released->value,
-            WorkOrderStatus::InProgress->value,
-            WorkOrderStatus::QualityCheck->value,
-        ];
     }
 }

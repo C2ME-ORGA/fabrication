@@ -62,7 +62,7 @@ enum WorkshopOperationStatus: string implements HasColor, HasLabel
         return match ($this) {
             self::Pending => [self::Ready],
             self::Ready => [self::InProgress, self::Cancelled],
-            self::InProgress => [self::Paused, self::Blocked, self::Completed],
+            self::InProgress => [self::Paused, self::Blocked, self::Completed, self::Cancelled],
             self::Paused => [self::InProgress, self::Blocked, self::Cancelled],
             self::Blocked => [self::Ready, self::Pending, self::InProgress, self::Cancelled],
             self::Completed, self::Cancelled => [],

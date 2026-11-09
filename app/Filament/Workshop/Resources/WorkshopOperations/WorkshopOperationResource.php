@@ -47,18 +47,41 @@ class WorkshopOperationResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->whereHas('workOrder', fn (Builder $query): Builder => $query->whereIn('status', [
-                WorkOrderStatus::Released->value,
-                WorkOrderStatus::InProgress->value,
-                WorkOrderStatus::QualityCheck->value,
-            ]))
+            ->whereHas('workOrder', fn (Builder $query): Builder => $query->whereIn(
+                'status',
+                self::visibleWorkOrderStatuses(),
+            ))
             ->with([
                 'workOrder.job',
                 'dependencies',
                 'timeEntries.user',
-                'auditLogs.user',
                 'lastStatusAudit.user',
             ]);
+    }
+
+    /**
+     * Statuts d'OF dont les opérations sont visibles dans le panneau atelier.
+     *
+     * Les opérateurs ne voient que les OF en exécution. Les responsables et
+     * administrateurs peuvent aussi consulter l'historique des OF clôturés ou
+     * annulés pour corriger les temps.
+     *
+     * @return array<int, string>
+     */
+    public static function visibleWorkOrderStatuses(): array
+    {
+        $statuses = [
+            WorkOrderStatus::Released->value,
+            WorkOrderStatus::InProgress->value,
+            WorkOrderStatus::QualityCheck->value,
+        ];
+
+        if (auth()->user()?->canManageOperationTimes() === true) {
+            $statuses[] = WorkOrderStatus::Completed->value;
+            $statuses[] = WorkOrderStatus::Cancelled->value;
+        }
+
+        return $statuses;
     }
 
     public static function getGloballySearchableAttributes(): array

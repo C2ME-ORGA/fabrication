@@ -9,9 +9,10 @@ use App\Models\WorkOrderOperation;
 /**
  * Protection des opérations générées dans un OF.
  *
- * Les modifications ordinaires ne sont autorisées qu'avant la libération de
- * l'OF. Après libération, seule une fonctionnalité exceptionnelle dédiée et
- * auditée pourra intervenir (hors périmètre du Lot 3).
+ * L'affectation de gamme et la modification des opérations générées sont
+ * réservées aux administrateurs et ne sont possibles qu'avant la libération
+ * de l'OF. Les responsables atelier et administrateurs peuvent consulter et
+ * corriger l'historique des temps, y compris après clôture ou annulation.
  */
 class WorkOrderOperationPolicy
 {
@@ -22,7 +23,12 @@ class WorkOrderOperationPolicy
 
     public function view(User $user, WorkOrderOperation $operation): bool
     {
-        return $operation->workOrder->allowsOperationExecution();
+        if ($operation->workOrder->allowsOperationExecution()) {
+            return true;
+        }
+
+        return $user->canManageOperationTimes()
+            && $operation->workOrder->status->isLocked();
     }
 
     public function update(User $user, WorkOrderOperation $operation): bool
@@ -104,7 +110,8 @@ class WorkOrderOperationPolicy
 
     /**
      * Saisie manuelle et correction réservées au responsable atelier et aux
-     * administrateurs.
+     * administrateurs. La saisie manuelle reste limitée aux OF en exécution ;
+     * la correction reste disponible sur l'historique clôturé ou annulé.
      */
     public function recordManualTime(User $user, WorkOrderOperation $operation): bool
     {
@@ -125,7 +132,10 @@ class WorkOrderOperationPolicy
 
     protected function canMutate(User $user, WorkOrderOperation $operation): bool
     {
-        return $user->canManageWorkshopRoutings()
+        // Les opérations générées font partie de la gamme de l'OF. Leur
+        // modification suit la même règle que l'affectation de gamme :
+        // administrateur uniquement, avant libération, hors statut final.
+        return $user->isAdmin()
             && ! $operation->workOrder->isRoutingLocked()
             && ! $operation->status->isFinal();
     }

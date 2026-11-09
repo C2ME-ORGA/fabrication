@@ -10,6 +10,13 @@ class ViewWorkshopOperation extends ViewRecord
 {
     protected static string $resource = WorkshopOperationResource::class;
 
+    public function mount(int|string $record): void
+    {
+        parent::mount($record);
+
+        $this->record->loadMissing(['auditLogs.user']);
+    }
+
     protected function getHeaderActions(): array
     {
         return [

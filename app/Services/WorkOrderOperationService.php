@@ -15,9 +15,9 @@ use Illuminate\Validation\ValidationException;
  * Moteur d'exécution des opérations d'un ordre de fabrication.
  *
  * Toutes les transitions sont centralisées ici, protégées par transaction et
- * verrouillage de l'OF puis de l'opération. Le chronométrage n'est pas géré
- * dans ce service : les actions incompatibles avec une session active sont
- * refusées en attendant le Lot 5.
+ * verrouillage de l'OF puis de l'opération. Le chronométrage est géré par
+ * `OperationTimerService` ; les actions qui exigent l'absence de session
+ * active la vérifient explicitement.
  */
 class WorkOrderOperationService
 {
@@ -218,6 +218,7 @@ class WorkOrderOperationService
 
             if (! in_array($locked->status, [
                 WorkshopOperationStatus::Ready,
+                WorkshopOperationStatus::InProgress,
                 WorkshopOperationStatus::Paused,
                 WorkshopOperationStatus::Blocked,
             ], true)) {

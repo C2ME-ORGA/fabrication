@@ -258,6 +258,25 @@ Format strict, transactionnel et idempotent :
 - Les fichiers CSV sont limités à 5 Mo et 5 000 lignes par défaut, configurables.
 - L'import ne gère pas encore les colonnes de production, les opérations atelier détaillées ou les contrôles qualité.
 
+## Atelier — gammes, opérations et chronométrage
+
+Le module atelier est documenté en détail dans [WORKSHOP.md](WORKSHOP.md). Il couvre :
+
+- les gammes modèles (`workshop_routings`) et leurs opérations/dépendances ;
+- la génération de copies indépendantes dans `work_order_operations` à l'affectation d'une gamme à un OF ;
+- le moteur d'exécution (`pending`, `ready`, `in_progress`, `paused`, `blocked`, `completed`, `cancelled`) ;
+- le chronométrage par opérateur, les saisies manuelles et les corrections append-only ;
+- les agrégats de temps et la supervision atelier.
+
+Règles transverses à retenir :
+
+- une seule session de chronométrage active par opérateur, garantie par un index unique SQL ;
+- l'arrêt automatique des chronos lors d'une pause ou d'un blocage d'opération ;
+- le refus d'une clôture ou annulation d'OF tant qu'un chrono est actif ou qu'une opération est encore `in_progress` ;
+- l'affectation d'une gamme à un OF réservée aux administrateurs ;
+- la consultation et la correction historique des temps réservées aux responsables atelier et administrateurs ;
+- les journaux d'audit de l'atelier sont immuables et écrits dans la transaction métier.
+
 ## Administration Filament
 
 Ressources disponibles dans le panneau `/admin` :

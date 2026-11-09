@@ -12,6 +12,7 @@ use App\Models\WorkOrderOperationAuditLog;
 use App\Models\WorkshopRouting;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -585,6 +586,11 @@ class WorkOrderRoutingService
                 "L'ordre de fabrication {$workOrder->number} est libéré ou clôturé : sa gamme et ses opérations ne sont plus modifiables.",
             );
         }
+
+        // Si l'appelant n'a pas fourni d'acteur, on retombe sur l'utilisateur
+        // authentifié : un responsable ne doit pas pouvoir contourner la
+        // restriction d'affectation en omettant simplement l'acteur.
+        $actor ??= Auth::user();
 
         if ($actor !== null && ! $actor->can('manageRouting', $workOrder)) {
             $this->fail('routing', 'Vous n\'êtes pas autorisé à modifier la gamme de cet ordre de fabrication.');

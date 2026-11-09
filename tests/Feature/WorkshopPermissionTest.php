@@ -57,4 +57,30 @@ class WorkshopPermissionTest extends TestCase
         $this->assertFalse($operator->canUnblockWorkshopOperations());
         $this->assertFalse($operator->canManageOperationTimes());
     }
+
+    public function test_an_operator_cannot_reach_supervision_or_routing_management_directly(): void
+    {
+        $operator = User::factory()->create();
+
+        $this->actingAs($operator)
+            ->get('/workshop/supervision')
+            ->assertForbidden();
+
+        $this->actingAs($operator)
+            ->get('/workshop/workshop-routings')
+            ->assertForbidden();
+    }
+
+    public function test_a_workshop_supervisor_can_reach_supervision_and_routing_management(): void
+    {
+        $supervisor = User::factory()->workshopSupervisor()->create();
+
+        $this->actingAs($supervisor)
+            ->get('/workshop/supervision')
+            ->assertOk();
+
+        $this->actingAs($supervisor)
+            ->get('/workshop/workshop-routings')
+            ->assertOk();
+    }
 }

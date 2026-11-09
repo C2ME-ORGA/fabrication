@@ -296,6 +296,101 @@ class WorkshopOperationsFilamentTest extends TestCase
         ]);
     }
 
+    public function test_a_manager_can_cancel_an_in_progress_operation_from_the_list(): void
+    {
+        $supervisor = User::factory()->workshopSupervisor()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
+        $operation = $this->operation($workOrder, WorkshopOperationStatus::InProgress, 'OP-CANCEL-RUNNING');
+
+        $this->actingAs($supervisor);
+
+        Livewire::test(ListWorkshopOperations::class)
+            ->assertTableActionVisible('cancelOperation', $operation)
+            ->callTableAction('cancelOperation', $operation, data: [
+                'reason' => 'Annulation atelier',
+            ])
+            ->assertNotified('Opération annulée');
+
+        $this->assertSame(WorkshopOperationStatus::Cancelled, $operation->fresh()->status);
+        $this->assertDatabaseHas('work_order_operation_audit_logs', [
+            'work_order_operation_id' => $operation->getKey(),
+            'event' => WorkshopOperationAuditEvent::Cancelled->value,
+            'user_id' => $supervisor->getKey(),
+        ]);
+    }
+
+    public function test_a_supervisor_can_consult_and_correct_historical_operations(): void
+    {
+        $supervisor = User::factory()->workshopSupervisor()->create();
+        $operator = User::factory()->create();
+
+        $completedWorkOrder = WorkOrder::factory()->status(WorkOrderStatus::Completed)->create();
+        $completed = $this->operation($completedWorkOrder, WorkshopOperationStatus::Completed, 'OP-CLOSED');
+        $completedEntry = OperationTimeEntry::factory()
+            ->forOperation($completed)
+            ->forUser($operator)
+            ->create(['duration_seconds' => 600]);
+
+        $cancelledWorkOrder = WorkOrder::factory()->status(WorkOrderStatus::Cancelled)->create();
+        $cancelled = $this->operation($cancelledWorkOrder, WorkshopOperationStatus::Cancelled, 'OP-CANCELLED');
+        OperationTimeEntry::factory()
+            ->forOperation($cancelled)
+            ->forUser($operator)
+            ->create(['duration_seconds' => 900]);
+
+        $this->actingAs($supervisor);
+
+        Livewire::test(ListWorkshopOperations::class)
+            ->assertCanSeeTableRecords([$completed, $cancelled]);
+
+        $this->actingAs($supervisor)
+            ->get("/workshop/operations/{$completed->getKey()}")
+            ->assertOk()
+            ->assertSee('OP-CLOSED');
+
+        Livewire::test(ViewWorkshopOperation::class, ['record' => $completed->getKey()])
+            ->assertActionHidden('startOperation')
+            ->assertActionHidden('pauseOperation')
+            ->assertActionHidden('completeOperation')
+            ->assertActionHidden('startTimer')
+            ->assertActionHidden('recordManualTime')
+            ->assertActionVisible('correctTime')
+            ->callAction('correctTime', data: [
+                'time_entry_id' => $completedEntry->getKey(),
+                'corrected_duration_seconds' => 300,
+                'correction_reason' => 'Correction historique',
+            ])
+            ->assertNotified('Temps corrigé');
+
+        $this->assertDatabaseHas('operation_time_entries', [
+            'original_entry_id' => $completedEntry->getKey(),
+            'duration_seconds' => 300,
+            'entry_type' => OperationTimeEntryType::Adjustment->value,
+        ]);
+        $this->assertSame(600, $completedEntry->fresh()->duration_seconds);
+    }
+
+    public function test_an_operator_cannot_consult_or_correct_a_historical_operation(): void
+    {
+        $operator = User::factory()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Completed)->create();
+        $operation = $this->operation($workOrder, WorkshopOperationStatus::Completed, 'OP-OPERATOR-HIDDEN');
+
+        OperationTimeEntry::factory()
+            ->forOperation($operation)
+            ->forUser($operator)
+            ->create(['duration_seconds' => 600]);
+
+        $this->actingAs($operator);
+
+        Livewire::test(ListWorkshopOperations::class)
+            ->assertCanNotSeeTableRecords([$operation]);
+
+        $this->actingAs($operator)
+            ->get("/workshop/operations/{$operation->getKey()}")
+            ->assertNotFound();
+    }
+
     protected function operation(
         WorkOrder $workOrder,
         WorkshopOperationStatus $status,

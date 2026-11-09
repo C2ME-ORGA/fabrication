@@ -8,6 +8,7 @@ use App\Enums\WorkshopOperationStatus;
 use App\Models\OperationTimeEntry;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderOperation;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -135,14 +136,19 @@ class WorkshopDashboardService
             ->values();
 
         $stale = $operations
-            ->filter(fn (WorkOrderOperation $operation): bool => in_array($operation->status, [
+            ->map(fn (WorkOrderOperation $operation): array => [
+                'operation' => $operation,
+                'last_activity' => $this->lastActivityAt($operation),
+            ])
+            ->filter(fn (array $row): bool => in_array($row['operation']->status, [
                 WorkshopOperationStatus::Ready,
                 WorkshopOperationStatus::InProgress,
                 WorkshopOperationStatus::Paused,
                 WorkshopOperationStatus::Blocked,
-            ], true) && $operation->updated_at !== null && $operation->updated_at->lt($threshold))
-            ->sortBy(fn (WorkOrderOperation $operation) => $operation->updated_at?->getTimestamp() ?? 0)
+            ], true) && $row['last_activity']->lt($threshold))
+            ->sortBy(fn (array $row): int => $row['last_activity']->getTimestamp())
             ->take(20)
+            ->pluck('operation')
             ->values();
 
         $activeSessions = OperationTimeEntry::query()
@@ -161,6 +167,27 @@ class WorkshopDashboardService
             'work_order_summaries' => $summaries,
             'work_orders' => $workOrders,
         ];
+    }
+
+    /**
+     * Dernière activité connue d'une opération : mise à jour de l'opération,
+     * ou événement de chronométrage (démarrage, arrêt, correction) survenu
+     * après cette mise à jour.
+     */
+    protected function lastActivityAt(WorkOrderOperation $operation): CarbonInterface
+    {
+        $lastEntryActivity = $operation->timeEntries
+            ->flatMap(fn (OperationTimeEntry $entry): array => [
+                $entry->updated_at,
+                $entry->started_at,
+                $entry->ended_at,
+            ])
+            ->filter()
+            ->max();
+
+        return collect([$operation->updated_at, $lastEntryActivity])
+            ->filter()
+            ->max() ?? now();
     }
 
     /**

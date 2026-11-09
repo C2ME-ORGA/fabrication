@@ -10,6 +10,7 @@ use App\Models\OperationTimeEntry;
 use App\Models\User;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderOperation;
+use App\Services\OperationTimeAggregationService;
 use App\Services\OperationTimeEntryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -232,6 +233,73 @@ class OperationTimeEntryServiceTest extends TestCase
             fn () => $this->service->correct($adjustment, 400, 'Seconde correction', $this->admin),
             'time_entry',
         );
+    }
+
+    public function test_a_supervisor_can_correct_a_time_after_work_order_completion(): void
+    {
+        $operation = $this->operation();
+        $original = $this->service->recordManual($operation, $this->operator, 600, null, null, $this->admin);
+
+        $operation->workOrder->forceFill(['status' => WorkOrderStatus::Completed])->save();
+
+        $correction = $this->service->correct(
+            $original->fresh(),
+            300,
+            'Correction après clôture',
+            $this->supervisor,
+        );
+
+        $this->assertSame(OperationTimeEntryType::Adjustment, $correction->entry_type);
+        $this->assertSame($original->getKey(), $correction->original_entry_id);
+        $this->assertSame(300, $correction->duration_seconds);
+        $this->assertSame($this->supervisor->getKey(), $correction->corrected_by);
+        $this->assertSame(600, $original->fresh()->duration_seconds);
+        $this->assertSame(
+            300,
+            app(OperationTimeAggregationService::class)->forOperation($operation->fresh())->realSeconds,
+        );
+        $this->assertDatabaseHas('work_order_operation_audit_logs', [
+            'work_order_operation_id' => $operation->getKey(),
+            'event' => WorkshopOperationAuditEvent::TimeCorrected->value,
+            'user_id' => $this->supervisor->getKey(),
+        ]);
+    }
+
+    public function test_an_administrator_can_correct_a_time_after_work_order_cancellation(): void
+    {
+        $operation = $this->operation();
+        $original = $this->service->recordManual($operation, $this->operator, 900, null, null, $this->admin);
+
+        $operation->workOrder->forceFill(['status' => WorkOrderStatus::Cancelled])->save();
+
+        $correction = $this->service->correct(
+            $original->fresh(),
+            450,
+            'Correction après annulation',
+            $this->admin,
+        );
+
+        $this->assertSame(450, $correction->duration_seconds);
+        $this->assertSame(900, $original->fresh()->duration_seconds);
+        $this->assertSame(
+            450,
+            app(OperationTimeAggregationService::class)->forOperation($operation->fresh())->realSeconds,
+        );
+    }
+
+    public function test_an_operator_cannot_correct_a_time_on_a_closed_work_order(): void
+    {
+        $operation = $this->operation();
+        $original = $this->service->recordManual($operation, $this->operator, 600, null, null, $this->admin);
+
+        $operation->workOrder->forceFill(['status' => WorkOrderStatus::Cancelled])->save();
+
+        $this->assertValidationFails(
+            fn () => $this->service->correct($original->fresh(), 300, 'Correction', $this->operator),
+            'time_entries',
+        );
+
+        $this->assertDatabaseCount('operation_time_entries', 1);
     }
 
     protected function operation(

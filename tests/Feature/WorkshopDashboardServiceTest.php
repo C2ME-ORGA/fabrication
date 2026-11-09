@@ -109,6 +109,26 @@ class WorkshopDashboardServiceTest extends TestCase
         $this->assertSame($job->getKey(), $workOrder->job->getKey());
     }
 
+    public function test_stale_operations_are_based_on_the_last_timer_activity(): void
+    {
+        $operator = User::factory()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
+        $operation = $this->operation($workOrder, WorkshopOperationStatus::InProgress, 60);
+
+        DB::table('work_order_operations')->where('id', $operation->getKey())->update([
+            'updated_at' => now()->subDays(2),
+        ]);
+
+        OperationTimeEntry::factory()
+            ->forOperation($operation)
+            ->forUser($operator)
+            ->create(['duration_seconds' => 600]);
+
+        $data = $this->service->supervision();
+
+        $this->assertFalse($data['stale_operations']->contains('id', $operation->getKey()));
+    }
+
     public function test_empty_data_returns_zero_indicators(): void
     {
         $summary = $this->service->summary();

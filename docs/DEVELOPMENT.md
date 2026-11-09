@@ -73,6 +73,20 @@ vendor/bin/phpunit -c phpunit.mysql.xml
 
 La suite MySQL vérifie le verrouillage de la ligne `documents` pendant la création concurrente de versions.
 
+## Module atelier — FC-6
+
+Le fonctionnement des gammes, de la génération des opérations d'OF, du moteur d'exécution, du chronométrage et de la supervision est documenté dans [WORKSHOP.md](WORKSHOP.md).
+
+Tests ciblés du module :
+
+```powershell
+php artisan test --filter=Workshop
+php artisan test --filter=Operation
+php artisan test --filter=Timing
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/OperationTimerConcurrencyTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/WorkOrderOperationConcurrencyTest.php
+```
+
 ## Conventions
 - Toute mutation métier importante passe par une action/service testable.
 - Les transitions d'OF sont contrôlées côté serveur et couvertes par des tests.

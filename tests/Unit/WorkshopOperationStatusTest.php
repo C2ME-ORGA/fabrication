@@ -12,7 +12,7 @@ class WorkshopOperationStatusTest extends TestCase
         $expected = [
             'pending' => ['ready'],
             'ready' => ['in_progress', 'cancelled'],
-            'in_progress' => ['paused', 'blocked', 'completed'],
+            'in_progress' => ['paused', 'blocked', 'completed', 'cancelled'],
             'paused' => ['in_progress', 'blocked', 'cancelled'],
             'blocked' => ['ready', 'pending', 'in_progress', 'cancelled'],
             'completed' => [],

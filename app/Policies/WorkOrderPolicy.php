@@ -88,9 +88,11 @@ class WorkOrderPolicy
     /**
      * Affectation ou remplacement de la gamme atelier d'un OF.
      * La gamme et ses opérations sont verrouillées après libération.
+     * L'affectation est réservée aux administrateurs ; le responsable atelier
+     * conserve la gestion du catalogue des gammes.
      */
     public function manageRouting(User $user, WorkOrder $workOrder): bool
     {
-        return $user->canManageWorkshopRoutings() && $workOrder->isRoutingEditable();
+        return $user->isAdmin() && $workOrder->isRoutingEditable();
     }
 }

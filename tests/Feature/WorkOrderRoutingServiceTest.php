@@ -143,16 +143,37 @@ class WorkOrderRoutingServiceTest extends TestCase
         $routing = $this->routing('GAM-PERM', ['DEBIT' => []]);
         $workOrder = WorkOrder::factory()->create();
         $operator = User::factory()->create();
+        $supervisor = User::factory()->workshopSupervisor()->create();
 
         $this->assertValidationFails(
             fn () => $this->service->assign($workOrder, $routing, $operator),
             'routing',
         );
 
-        $supervisor = User::factory()->workshopSupervisor()->create();
-        $assigned = $this->service->assign($workOrder, $routing, $supervisor);
+        $this->assertValidationFails(
+            fn () => $this->service->assign($workOrder, $routing, $supervisor),
+            'routing',
+        );
+
+        $assigned = $this->service->assign($workOrder, $routing, $this->admin);
 
         $this->assertSame($routing->getKey(), $assigned->workshop_routing_id);
+    }
+
+    public function test_a_supervisor_cannot_bypass_assignment_by_omitting_the_actor(): void
+    {
+        $routing = $this->routing('GAM-PERM-NULL', ['DEBIT' => []]);
+        $workOrder = WorkOrder::factory()->create();
+        $supervisor = User::factory()->workshopSupervisor()->create();
+
+        $this->actingAs($supervisor);
+
+        $this->assertValidationFails(
+            fn () => $this->service->assign($workOrder, $routing),
+            'routing',
+        );
+
+        $this->assertNull($workOrder->fresh()->workshop_routing_id);
     }
 
     public function test_a_work_order_without_routing_keeps_working_normally(): void

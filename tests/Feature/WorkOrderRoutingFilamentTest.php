@@ -114,6 +114,24 @@ class WorkOrderRoutingFilamentTest extends TestCase
         $this->operationsManager($workOrder)->assertForbidden();
     }
 
+    public function test_a_supervisor_cannot_access_the_routing_assignment_interface(): void
+    {
+        $supervisor = User::factory()->workshopSupervisor()->create();
+        $workOrder = WorkOrder::factory()->create();
+
+        $this->actingAs($supervisor);
+
+        $this->operationsManager($workOrder)->assertForbidden();
+        $this->get("/admin/work-orders/{$workOrder->id}")->assertForbidden();
+    }
+
+    public function test_a_guest_cannot_access_the_routing_assignment_interface(): void
+    {
+        $workOrder = WorkOrder::factory()->create();
+
+        $this->get("/admin/work-orders/{$workOrder->id}")->assertRedirect();
+    }
+
     public function test_an_operation_can_be_edited_and_its_dependencies_managed_before_release(): void
     {
         $admin = User::factory()->admin()->create();

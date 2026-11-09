@@ -65,6 +65,36 @@ class WorkOrderOperationPolicyTest extends TestCase
         }
     }
 
+    public function test_managers_can_view_and_correct_historical_operations_but_operators_cannot(): void
+    {
+        $supervisor = User::factory()->workshopSupervisor()->create();
+        $admin = User::factory()->admin()->create();
+        $operator = User::factory()->create();
+
+        foreach ([WorkOrderStatus::Completed, WorkOrderStatus::Cancelled] as $workOrderStatus) {
+            $workOrder = WorkOrder::factory()->status($workOrderStatus)->create();
+            $operation = WorkOrderOperation::factory()
+                ->forWorkOrder($workOrder)
+                ->create(['status' => WorkshopOperationStatus::Completed]);
+
+            foreach ([$supervisor, $admin] as $manager) {
+                $this->assertTrue(Gate::forUser($manager)->allows('view', $operation));
+                $this->assertTrue(Gate::forUser($manager)->allows('correctTime', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('start', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('pause', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('block', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('complete', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('cancel', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('unblock', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('startTimer', $operation));
+                $this->assertFalse(Gate::forUser($manager)->allows('recordManualTime', $operation));
+            }
+
+            $this->assertFalse(Gate::forUser($operator)->allows('view', $operation));
+            $this->assertFalse(Gate::forUser($operator)->allows('correctTime', $operation));
+        }
+    }
+
     protected function operationForReleasedWorkOrder(WorkshopOperationStatus $status): WorkOrderOperation
     {
         $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();

@@ -84,4 +84,13 @@ class WorkOrderPolicy
     {
         return $user->isAdmin() && ! $workOrder->isLocked();
     }
+
+    /**
+     * Affectation ou remplacement de la gamme atelier d'un OF.
+     * La gamme et ses opérations sont verrouillées après libération.
+     */
+    public function manageRouting(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->canManageWorkshopRoutings() && $workOrder->isRoutingEditable();
+    }
 }

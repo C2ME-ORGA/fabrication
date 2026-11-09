@@ -29,20 +29,51 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_admin' => 'boolean',
+            'is_workshop_supervisor' => 'boolean',
         ];
     }
 
     /**
-     * Only explicitly promoted users may reach the admin panel. `is_admin`
-     * is deliberately not mass assignable.
+     * L'accès au panneau d'administration reste réservé aux administrateurs.
+     * L'interface atelier est un panneau distinct, accessible aux utilisateurs
+     * authentifiés sans leur donner les droits d'administration.
      */
     public function canAccessPanel(Panel $panel): bool
     {
+        if ($panel->getId() === 'workshop') {
+            return true;
+        }
+
         return $this->isAdmin();
     }
 
     public function isAdmin(): bool
     {
         return (bool) $this->is_admin;
+    }
+
+    /**
+     * Responsable atelier : peut gérer les gammes, débloquer des opérations,
+     * saisir et corriger des temps. Ce rôle n'accorde aucun accès admin.
+     * Le champ `is_workshop_supervisor` n'est pas mass assignable.
+     */
+    public function isWorkshopSupervisor(): bool
+    {
+        return (bool) $this->is_workshop_supervisor;
+    }
+
+    public function canManageWorkshopRoutings(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor();
+    }
+
+    public function canUnblockWorkshopOperations(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor();
+    }
+
+    public function canManageOperationTimes(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor();
     }
 }

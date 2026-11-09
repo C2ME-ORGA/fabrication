@@ -8,6 +8,7 @@ use App\Filament\Resources\WorkOrders\Pages\ListWorkOrders;
 use App\Filament\Resources\WorkOrders\Pages\ViewWorkOrder;
 use App\Filament\Resources\WorkOrders\RelationManagers\BomImportsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\ItemsRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\WorkOrderOperationsRelationManager;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderForm;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderInfolist;
 use App\Filament\Resources\WorkOrders\Tables\WorkOrdersTable;
@@ -53,6 +54,7 @@ class WorkOrderResource extends Resource
     public static function getRelations(): array
     {
         return [
+            WorkOrderOperationsRelationManager::class,
             ItemsRelationManager::class,
             BomImportsRelationManager::class,
         ];

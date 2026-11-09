@@ -31,6 +31,7 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
             'is_admin' => false,
+            'is_workshop_supervisor' => false,
         ];
     }
 
@@ -41,6 +42,17 @@ class UserFactory extends Factory
     {
         return $this->state(fn (): array => [
             'is_admin' => true,
+        ]);
+    }
+
+    /**
+     * Workshop supervisor without any administrator access.
+     */
+    public function workshopSupervisor(): static
+    {
+        return $this->state(fn (): array => [
+            'is_workshop_supervisor' => true,
+            'is_admin' => false,
         ]);
     }
 

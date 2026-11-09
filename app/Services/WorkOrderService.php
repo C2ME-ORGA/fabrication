@@ -6,8 +6,10 @@ use App\Enums\JobStatus;
 use App\Enums\WorkOrderAuditEvent;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
+use App\Enums\WorkshopOperationStatus;
 use App\Models\Document;
 use App\Models\Job;
+use App\Models\OperationTimeEntry;
 use App\Models\User;
 use App\Models\WorkOrder;
 use Illuminate\Support\Arr;
@@ -176,6 +178,15 @@ class WorkOrderService
                         'status',
                         "Transition de statut interdite : « {$from->getLabel()} » vers « {$target->getLabel()} ».",
                     );
+                }
+
+                // Une clôture ou une annulation ne doit pas laisser de session
+                // de chronométrage orpheline : l'opération disparaîtrait alors
+                // de l'interface atelier et l'opérateur resterait bloqué par
+                // la contrainte d'unicité de sa session active.
+                if (in_array($target, [WorkOrderStatus::Completed, WorkOrderStatus::Cancelled], true)) {
+                    $this->assertNoActiveTimeEntries($locked);
+                    $this->assertNoInProgressOperations($locked);
                 }
 
                 if ($target === WorkOrderStatus::Released) {
@@ -444,6 +455,40 @@ class WorkOrderService
             $this->fail(
                 'status',
                 "Un ordre de fabrication « {$workOrder->status->getLabel()} » ne peut plus être modifié.",
+            );
+        }
+    }
+
+    /**
+     * Interdit la clôture ou l'annulation d'un OF tant qu'un chronomètre est
+     * actif sur l'une de ses opérations.
+     */
+    protected function assertNoActiveTimeEntries(WorkOrder $workOrder): void
+    {
+        if (OperationTimeEntry::query()
+            ->whereIn('work_order_operation_id', $workOrder->operations()->select('id'))
+            ->whereNull('ended_at')
+            ->exists()) {
+            $this->fail(
+                'time_entries',
+                'Des sessions de chronométrage sont actives sur cet ordre de fabrication. Arrêtez-les avant de changer son statut.',
+            );
+        }
+    }
+
+    /**
+     * Interdit la clôture ou l'annulation d'un OF tant qu'une opération est
+     * encore en cours. L'annulation des opérations doit rester une action
+     * explicite et auditée du moteur d'exécution.
+     */
+    protected function assertNoInProgressOperations(WorkOrder $workOrder): void
+    {
+        if ($workOrder->operations()
+            ->where('status', WorkshopOperationStatus::InProgress->value)
+            ->exists()) {
+            $this->fail(
+                'operations',
+                'Des opérations sont encore en cours sur cet ordre de fabrication. Annulez-les explicitement avant de changer son statut.',
             );
         }
     }

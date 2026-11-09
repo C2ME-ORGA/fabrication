@@ -44,6 +44,7 @@ class WorkOrder extends Model
         'be_approved_at',
         'be_approval_batch_id',
         'be_approval_snapshot_id',
+        'workshop_routing_id',
     ];
 
     /**
@@ -101,6 +102,52 @@ class WorkOrder extends Model
     }
 
     /**
+     * Gamme modèle utilisée pour générer les opérations de cet OF.
+     *
+     * @return BelongsTo<WorkshopRouting, $this>
+     */
+    public function workshopRouting(): BelongsTo
+    {
+        return $this->belongsTo(WorkshopRouting::class);
+    }
+
+    /**
+     * Opérations de fabrication copiées dans l'OF, dans l'ordre d'affichage.
+     *
+     * @return HasMany<WorkOrderOperation, $this>
+     */
+    public function operations(): HasMany
+    {
+        return $this->hasMany(WorkOrderOperation::class)->orderBy('position')->orderBy('id');
+    }
+
+    /**
+     * La gamme et les opérations d'un OF ne sont modifiables que tant que
+     * l'OF n'a pas été libéré (brouillon ou prêt).
+     */
+    public function isRoutingEditable(): bool
+    {
+        return in_array($this->status, [WorkOrderStatus::Draft, WorkOrderStatus::Ready], true);
+    }
+
+    /**
+     * Une fois libéré, l'OF et ses opérations sont protégés contre les
+     * modifications ordinaires.
+     */
+    public function isRoutingLocked(): bool
+    {
+        return ! $this->isRoutingEditable();
+    }
+
+    /**
+     * L'exécution des opérations est possible après libération de l'OF.
+     */
+    public function allowsOperationExecution(): bool
+    {
+        return $this->status->allowsOperationExecution();
+    }
+
+    /**
      * Frozen document references captured at release and re-review time.
      *
      * @return HasMany<WorkOrderDocumentSnapshot, $this>
@@ -118,6 +165,16 @@ class WorkOrder extends Model
     public function auditLogs(): HasMany
     {
         return $this->hasMany(WorkOrderAuditLog::class)->latest('created_at');
+    }
+
+    /**
+     * Journal d'audit des opérations et des affectations de gamme.
+     *
+     * @return HasMany<WorkOrderOperationAuditLog, $this>
+     */
+    public function operationAuditLogs(): HasMany
+    {
+        return $this->hasMany(WorkOrderOperationAuditLog::class)->latest('created_at');
     }
 
     /**

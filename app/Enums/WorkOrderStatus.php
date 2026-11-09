@@ -72,6 +72,15 @@ enum WorkOrderStatus: string implements HasColor, HasLabel
     }
 
     /**
+     * Les opérations peuvent être exécutées lorsque l'OF a été libéré et
+     * n'est ni terminé ni annulé.
+     */
+    public function allowsOperationExecution(): bool
+    {
+        return in_array($this, [self::Released, self::InProgress, self::QualityCheck], true);
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function options(): array

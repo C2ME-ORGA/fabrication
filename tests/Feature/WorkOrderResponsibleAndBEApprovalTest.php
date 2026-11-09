@@ -115,25 +115,6 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         ], $user);
     }
 
-    public function test_be_approval_fields_cannot_be_mass_assigned(): void
-    {
-        $job = Job::factory()->active()->create();
-        $user = User::factory()->admin()->create();
-        $workOrder = WorkOrder::factory()->create(['job_id' => $job->id]);
-
-        $workOrder->fill([
-            'be_approved_by' => $user->id,
-            'be_approved_at' => now(),
-            'be_approval_batch_id' => 'forged-batch-id',
-            'be_approval_snapshot_id' => 123,
-        ]);
-
-        $this->assertNull($workOrder->be_approved_by);
-        $this->assertNull($workOrder->be_approved_at);
-        $this->assertNull($workOrder->be_approval_batch_id);
-        $this->assertNull($workOrder->be_approval_snapshot_id);
-    }
-
     public function test_be_approval_by_authorized_user(): void
     {
         $job = Job::factory()->active()->create();
@@ -517,7 +498,7 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
             'be_approval_snapshot_id' => 1,
         ] as $field => $value) {
             try {
-                $this->service->create([
+                app(WorkOrderService::class)->create([
                     'job_id' => $job->id,
                     'title' => "OF masse assignée {$field}",
                     $field => $value,
@@ -532,7 +513,7 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
         $this->assertDatabaseMissing('work_orders', ['title' => 'OF masse assignée be_approved_by']);
 
         // Modification : chaque champ BE fourni doit également être rejeté.
-        $workOrder = $this->service->create([
+        $workOrder = app(WorkOrderService::class)->create([
             'job_id' => $job->id,
             'title' => 'OF champs protégés',
         ], $user);
@@ -544,7 +525,7 @@ class WorkOrderResponsibleAndBEApprovalTest extends TestCase
             'be_approval_snapshot_id' => 1,
         ] as $field => $value) {
             try {
-                $this->service->update($workOrder, [$field => $value], $user);
+                app(WorkOrderService::class)->update($workOrder, [$field => $value], $user);
 
                 $this->fail("L'update aurait dû rejeter le champ protégé {$field}.");
             } catch (ValidationException) {

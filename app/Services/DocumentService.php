@@ -19,6 +19,7 @@ class DocumentService
 {
     public function __construct(
         protected DocumentAuditService $audit,
+        protected DocumentLockingService $locking,
     ) {}
 
     /**
@@ -30,6 +31,13 @@ class DocumentService
         $this->assertAssociation($data['job_id'] ?? null, $data['work_order_id'] ?? null);
 
         return DB::transaction(function () use ($data, $actor): Document {
+            // Ordre commun : WorkOrder(s) -> Job(s) -> Document.
+            $this->locking->lockParents(
+                $data['work_order_id'] ?? null,
+                $data['job_id'] ?? null,
+            );
+            $this->assertAssociation($data['job_id'] ?? null, $data['work_order_id'] ?? null);
+
             $document = new Document;
 
             $document->fill(Arr::only($data, [
@@ -59,16 +67,23 @@ class DocumentService
         $data = $this->validate($data);
 
         return DB::transaction(function () use ($document, $data, $actor): Document {
-            $locked = Document::query()->lockForUpdate()->findOrFail($document->getKey());
+            // Lire les rattachements sans verrou, verrouiller tous les parents
+            // (anciens et nouveaux), puis verrouiller le Document en dernier.
+            $current = Document::query()->findOrFail($document->getKey());
+            $jobId = array_key_exists('job_id', $data) ? $data['job_id'] : $current->job_id;
+            $workOrderId = array_key_exists('work_order_id', $data) ? $data['work_order_id'] : $current->work_order_id;
+
+            $locked = $this->locking->lockDocument(
+                $current->getKey(),
+                additionalWorkOrderIds: [$workOrderId],
+                additionalJobIds: [$jobId],
+            );
 
             if ($locked->isArchived()) {
                 throw ValidationException::withMessages([
                     'status' => 'Un document archivé ne peut plus être modifié.',
                 ]);
             }
-
-            $jobId = array_key_exists('job_id', $data) ? $data['job_id'] : $locked->job_id;
-            $workOrderId = array_key_exists('work_order_id', $data) ? $data['work_order_id'] : $locked->work_order_id;
 
             $this->assertAssociation($jobId, $workOrderId);
 
@@ -107,7 +122,8 @@ class DocumentService
     public function archive(Document $document, ?User $actor = null, ?string $comment = null): Document
     {
         return DB::transaction(function () use ($document, $actor, $comment): Document {
-            $locked = Document::query()->lockForUpdate()->findOrFail($document->getKey());
+            // Le verrouillage des parents précède toujours celui du Document.
+            $locked = $this->locking->lockDocument($document->getKey());
 
             if ($locked->isArchived()) {
                 throw ValidationException::withMessages([

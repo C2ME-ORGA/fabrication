@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Job;
+use App\Models\User;
 use App\Models\WorkOrder;
 use App\Services\WorkOrderNumberGenerator;
+use App\Services\WorkOrderService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -126,6 +128,60 @@ class WorkOrderNumberGeneratorTest extends TestCase
             $this->fail('La ligne de compteur aurait dû être verrouillée par la transaction en cours.');
         } catch (QueryException $exception) {
             $this->assertNotSame('', $exception->getMessage());
+        } finally {
+            DB::purge('mysql_probe');
+        }
+    }
+
+    /**
+     * Vérifie qu'une création d'OF réelle (via WorkOrderService) conserve le
+     * verrou du compteur jusqu'à la fin de sa transaction. Une seconde
+     * connexion ne peut donc pas consommer le même numéro : les créations
+     * simultanées sont sérialisées et l'unicité est garantie par la base.
+     */
+    public function test_concurrent_work_order_creation_blocks_on_sequence_row_on_mysql(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped(
+                'Le verrouillage concurrent MySQL ne peut pas être vérifié sur '
+                .DB::connection()->getDriverName().'. Lancez ce test avec une base MySQL dédiée.',
+            );
+        }
+
+        Carbon::setTestNow(Carbon::parse('2026-10-27 10:00:00'));
+
+        $job = Job::factory()->active()->create();
+        $admin = User::factory()->admin()->create();
+
+        // Le service de création verrouille la ligne de compteur dans la
+        // transaction de test ; le verrou reste tenu jusqu'au rollback final.
+        $workOrder = app(WorkOrderService::class)->create([
+            'job_id' => $job->id,
+            'title' => 'OF création concurrente',
+        ], $admin);
+
+        $this->assertSame('OF-2026-0001', $workOrder->number);
+        $this->assertDatabaseHas('work_order_sequences', ['year' => 2026, 'last_number' => 1]);
+        $this->assertSame($job->id, $workOrder->job_id);
+
+        $connection = config('database.connections.mysql');
+        config(['database.connections.mysql_probe' => $connection]);
+        DB::purge('mysql_probe');
+
+        try {
+            DB::connection('mysql_probe')->statement(
+                'select * from work_order_sequences where `year` = ? for update nowait',
+                [2026],
+            );
+
+            $this->fail('La ligne de compteur aurait dû rester verrouillée pendant la création.');
+        } catch (QueryException $exception) {
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            $this->assertContains(
+                $driverCode,
+                [1205, 3572],
+                "Erreur SQL inattendue pendant la vérification du verrou : {$exception->getMessage()}",
+            );
         } finally {
             DB::purge('mysql_probe');
         }

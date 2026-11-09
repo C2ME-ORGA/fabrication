@@ -18,6 +18,7 @@ class DocumentVersionService
     public function __construct(
         protected DocumentStorageService $storage,
         protected DocumentAuditService $audit,
+        protected DocumentLockingService $locking,
     ) {}
 
     public function upload(
@@ -47,7 +48,7 @@ class DocumentVersionService
 
         try {
             return DB::transaction(function () use ($document, $stored, $revision, $actor, $comment): DocumentVersion {
-                $locked = Document::query()->lockForUpdate()->findOrFail($document->getKey());
+                $locked = $this->locking->lockDocument($document->getKey());
 
                 if ($locked->isArchived()) {
                     throw ValidationException::withMessages([
@@ -111,8 +112,8 @@ class DocumentVersionService
     public function submit(DocumentVersion $version, ?User $actor = null): DocumentVersion
     {
         return DB::transaction(function () use ($version, $actor): DocumentVersion {
-            // Same lock order as upload/approve: document first, then version.
-            $lockedDocument = Document::query()->lockForUpdate()->findOrFail($version->document_id);
+            // Ordre commun : WorkOrder(s) -> Job(s) -> Document -> Version.
+            $lockedDocument = $this->locking->lockDocument($version->document_id);
             $locked = $this->lock($version);
 
             if ($locked->status !== DocumentVersionStatus::Draft) {
@@ -137,7 +138,7 @@ class DocumentVersionService
     public function approve(DocumentVersion $version, ?User $actor = null, ?string $comment = null): DocumentVersion
     {
         return DB::transaction(function () use ($version, $actor, $comment): DocumentVersion {
-            $lockedDocument = Document::query()->lockForUpdate()->findOrFail($version->document_id);
+            $lockedDocument = $this->locking->lockDocument($version->document_id);
             $locked = DocumentVersion::query()->lockForUpdate()->findOrFail($version->getKey());
 
             if ($lockedDocument->isArchived()) {
@@ -211,7 +212,7 @@ class DocumentVersionService
         }
 
         return DB::transaction(function () use ($version, $actor, $comment): DocumentVersion {
-            Document::query()->lockForUpdate()->findOrFail($version->document_id);
+            $this->locking->lockDocument($version->document_id);
             $locked = $this->lock($version);
 
             if ($locked->status !== DocumentVersionStatus::PendingValidation) {

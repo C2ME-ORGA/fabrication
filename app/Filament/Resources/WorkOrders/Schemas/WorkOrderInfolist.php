@@ -73,6 +73,16 @@ class WorkOrderInfolist
                             ->label('Libéré le')
                             ->dateTime('d/m/Y H:i')
                             ->placeholder('—'),
+                        TextEntry::make('responsible.name')
+                            ->label('Responsable opérationnel')
+                            ->placeholder('—'),
+                        TextEntry::make('beApprover.name')
+                            ->label('Approuvé par (BE)')
+                            ->placeholder('—'),
+                        TextEntry::make('be_approved_at')
+                            ->label('Approbation BE le')
+                            ->dateTime('d/m/Y H:i')
+                            ->placeholder('—'),
                         TextEntry::make('created_at')
                             ->label('Créé le')
                             ->dateTime('d/m/Y H:i'),

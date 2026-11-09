@@ -12,6 +12,7 @@ use App\Models\WorkOrder;
 use App\Models\WorkOrderDocumentSnapshot;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class DocumentSnapshotService
@@ -54,6 +55,113 @@ class DocumentSnapshotService
         }
 
         return $created;
+    }
+
+    /**
+     * Capture the approved document versions applicable at BE approval time.
+     * Creates one snapshot per applicable document, tagged with a shared
+     * batch UUID so all snapshots of the same BE approval can be identified
+     * and compared at release time.
+     *
+     * Documents without an approved version are still captured (with a null
+     * document_version_id) so that the snapshot reflects the real state,
+     * including missing approvals.
+     *
+     * @return array{Collection<int, WorkOrderDocumentSnapshot>, string} The created snapshots and the batch UUID.
+     */
+    public function captureForBEApproval(WorkOrder $workOrder, ?User $actor = null): array
+    {
+        $created = new Collection;
+        $batchId = (string) Str::uuid();
+
+        foreach ($this->applicability->applicableDocumentsFor($workOrder) as $document) {
+            $version = $document->latestApprovedVersion;
+
+            $snapshot = $this->createSnapshot(
+                $workOrder,
+                $document,
+                $version,
+                DocumentSnapshotReason::BeApproval,
+                $actor,
+                null,
+                $batchId,
+            );
+            $created->push($snapshot);
+        }
+
+        return [$created, $batchId];
+    }
+
+    /**
+     * Compares the current applicable document state with the BE approval
+     * snapshots captured in the given batch. Returns true if the state is
+     * strictly identical (same documents, same approved versions, same
+     * revisions, same SHA-256), false otherwise.
+     *
+     * Documents that had no approved version at approval time but now do are
+     * considered a change.
+     */
+    public function isBEApprovalStillValid(WorkOrder $workOrder, string $batchId): bool
+    {
+        $approvedSnapshots = $workOrder->documentSnapshots()
+            ->where('reason', DocumentSnapshotReason::BeApproval->value)
+            ->where('be_approval_batch_id', $batchId)
+            ->get();
+
+        $applicableDocuments = $this->applicability->applicableDocumentsFor($workOrder);
+
+        // Same number of applicable documents.
+        if ($approvedSnapshots->count() !== $applicableDocuments->count()) {
+            return false;
+        }
+
+        // Build a lookup of approved snapshots by document ID.
+        $snapshotByDocument = $approvedSnapshots->keyBy('document_id');
+
+        foreach ($applicableDocuments as $document) {
+            $snapshot = $snapshotByDocument->get($document->getKey());
+
+            // Document was applicable at approval time but is no longer applicable,
+            // or a new document became applicable after approval.
+            if ($snapshot === null) {
+                return false;
+            }
+
+            $currentVersion = $document->latestApprovedVersion;
+
+            // Document had no approved version at approval time but now does,
+            // or vice versa.
+            if (($snapshot->document_version_id === null) !== ($currentVersion === null)) {
+                return false;
+            }
+
+            // Metadata is part of the BE review even when no approved version
+            // existed at approval time.
+            if ($snapshot->category !== $document->category) {
+                return false;
+            }
+            if ($snapshot->title !== $document->title) {
+                return false;
+            }
+            if ($snapshot->reference !== $document->reference) {
+                return false;
+            }
+
+            // When a version exists, compare its immutable identity and content.
+            if ($currentVersion !== null) {
+                if ($snapshot->document_version_id !== $currentVersion->getKey()) {
+                    return false;
+                }
+                if ($snapshot->revision !== $currentVersion->revision) {
+                    return false;
+                }
+                if ($snapshot->sha256 !== $currentVersion->sha256) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -134,27 +242,29 @@ class DocumentSnapshotService
     protected function createSnapshot(
         WorkOrder $workOrder,
         Document $document,
-        DocumentVersion $version,
+        ?DocumentVersion $version,
         DocumentSnapshotReason $reason,
         ?User $actor,
         ?string $comment = null,
+        ?string $beApprovalBatchId = null,
     ): WorkOrderDocumentSnapshot {
         $snapshot = WorkOrderDocumentSnapshot::query()->create([
             'work_order_id' => $workOrder->getKey(),
             'document_id' => $document->getKey(),
-            'document_version_id' => $version->getKey(),
+            'document_version_id' => $version?->getKey(),
             'category' => $document->category,
             'title' => $document->title,
             'reference' => $document->reference,
-            'revision' => $version->revision,
-            'version_number' => $version->version_number,
-            'sha256' => $version->sha256,
-            'validated_by' => $version->validated_by,
-            'validated_at' => $version->validated_at,
+            'revision' => $version?->revision,
+            'version_number' => $version?->version_number,
+            'sha256' => $version?->sha256,
+            'validated_by' => $version?->validated_by,
+            'validated_at' => $version?->validated_at,
             'captured_by' => $actor?->getKey(),
             'captured_at' => now(),
             'reason' => $reason,
             'comment' => $comment,
+            'be_approval_batch_id' => $beApprovalBatchId,
         ]);
 
         $this->audit->log(
@@ -167,8 +277,8 @@ class DocumentSnapshotService
             [
                 'reason' => $reason->value,
                 'snapshot_id' => $snapshot->getKey(),
-                'revision' => $version->revision,
-                'version_number' => $version->version_number,
+                'revision' => $version?->revision,
+                'version_number' => $version?->version_number,
             ],
         );
 

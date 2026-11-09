@@ -63,4 +63,14 @@ class WorkOrderPolicy
     {
         return $user->isAdmin() && ! $workOrder->isLocked();
     }
+
+    /**
+     * Only administrators may approve a work order for the engineering office.
+     */
+    public function approveBE(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->isAdmin()
+            && ! $workOrder->isLocked()
+            && $workOrder->be_approved_by === null;
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Resources\QualityControlTemplates\QualityControlTemplateResource;
+use App\Filament\Resources\QualityControlTemplateVersions\QualityControlTemplateVersionResource;
 use App\Filament\Resources\WorkshopRoutings\WorkshopRoutingResource;
 use App\Filament\Workshop\Pages\WorkshopDashboard;
 use App\Filament\Workshop\Pages\WorkshopSupervision;
@@ -43,6 +45,8 @@ class WorkshopPanelProvider extends PanelProvider
             ->resources([
                 WorkshopRoutingResource::class,
                 WorkshopOperationResource::class,
+                QualityControlTemplateResource::class,
+                QualityControlTemplateVersionResource::class,
             ])
             ->pages([
                 WorkshopDashboard::class,

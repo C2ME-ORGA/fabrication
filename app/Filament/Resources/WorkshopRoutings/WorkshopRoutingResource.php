@@ -8,6 +8,7 @@ use App\Filament\Resources\WorkshopRoutings\Pages\ListWorkshopRoutings;
 use App\Filament\Resources\WorkshopRoutings\Pages\ViewWorkshopRouting;
 use App\Filament\Resources\WorkshopRoutings\RelationManagers\DependenciesRelationManager;
 use App\Filament\Resources\WorkshopRoutings\RelationManagers\OperationsRelationManager;
+use App\Filament\Resources\WorkshopRoutings\RelationManagers\QualityRequirementsRelationManager;
 use App\Filament\Resources\WorkshopRoutings\Schemas\WorkshopRoutingForm;
 use App\Filament\Resources\WorkshopRoutings\Schemas\WorkshopRoutingInfolist;
 use App\Filament\Resources\WorkshopRoutings\Tables\WorkshopRoutingsTable;
@@ -63,6 +64,7 @@ class WorkshopRoutingResource extends Resource
         return [
             OperationsRelationManager::class,
             DependenciesRelationManager::class,
+            QualityRequirementsRelationManager::class,
         ];
     }
 

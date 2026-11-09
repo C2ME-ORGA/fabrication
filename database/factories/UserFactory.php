@@ -32,6 +32,7 @@ class UserFactory extends Factory
             'remember_token' => Str::random(10),
             'is_admin' => false,
             'is_workshop_supervisor' => false,
+            'is_quality_manager' => false,
         ];
     }
 
@@ -52,6 +53,17 @@ class UserFactory extends Factory
     {
         return $this->state(fn (): array => [
             'is_workshop_supervisor' => true,
+            'is_admin' => false,
+        ]);
+    }
+
+    /**
+     * Quality manager without any administrator access.
+     */
+    public function qualityManager(): static
+    {
+        return $this->state(fn (): array => [
+            'is_quality_manager' => true,
             'is_admin' => false,
         ]);
     }

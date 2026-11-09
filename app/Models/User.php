@@ -30,6 +30,7 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'is_workshop_supervisor' => 'boolean',
+            'is_quality_manager' => 'boolean',
         ];
     }
 
@@ -75,5 +76,29 @@ class User extends Authenticatable implements FilamentUser
     public function canManageOperationTimes(): bool
     {
         return $this->isAdmin() || $this->isWorkshopSupervisor();
+    }
+
+    /**
+     * Responsable qualité : gère le référentiel, valide les contrôles et
+     * accorde les dérogations. Ce drapeau n'accorde aucun accès admin.
+     * Il n'est pas mass assignable : il doit être positionné explicitement.
+     */
+    public function isQualityManager(): bool
+    {
+        return (bool) $this->is_quality_manager;
+    }
+
+    public function canManageQualityTemplates(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    /**
+     * Les exigences qualité d'une gamme sont gérées par le responsable
+     * atelier (catalogue), le responsable qualité et l'administrateur.
+     */
+    public function canManageQualityRequirements(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
     }
 }

@@ -18,6 +18,7 @@ class WorkshopRoutingValidationService
 {
     public function __construct(
         protected OperationDependencyService $dependencies,
+        protected WorkshopRoutingQualityRequirementService $qualityRequirements,
     ) {}
 
     /**
@@ -70,6 +71,12 @@ class WorkshopRoutingValidationService
 
         if ($graphErrors !== []) {
             $errors['dependencies'] = $graphErrors;
+        }
+
+        foreach ($this->qualityRequirements->errorsFor($routing) as $field => $messages) {
+            foreach ($messages as $message) {
+                $errors[$field][] = $message;
+            }
         }
 
         return $errors;

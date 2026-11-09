@@ -17,12 +17,12 @@ class WorkshopRoutingPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->canManageWorkshopRoutings();
+        return $user->canManageWorkshopRoutings() || $user->canManageQualityRequirements();
     }
 
     public function view(User $user, WorkshopRouting $routing): bool
     {
-        return $user->canManageWorkshopRoutings();
+        return $user->canManageWorkshopRoutings() || $user->canManageQualityRequirements();
     }
 
     public function create(User $user): bool
@@ -60,5 +60,14 @@ class WorkshopRoutingPolicy
     public function manageDependencies(User $user, WorkshopRouting $routing): bool
     {
         return $user->canManageWorkshopRoutings();
+    }
+
+    /**
+     * Les exigences qualité d'une gamme sont gérées par le responsable
+     * atelier (catalogue), le responsable qualité et l'administrateur.
+     */
+    public function manageQualityRequirements(User $user, WorkshopRouting $routing): bool
+    {
+        return $user->canManageQualityRequirements();
     }
 }

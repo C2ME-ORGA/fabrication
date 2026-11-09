@@ -72,6 +72,8 @@ vendor/bin/phpunit -c phpunit.mysql.xml
 ```
 
 La suite MySQL vérifie le verrouillage de la ligne `documents` pendant la création concurrente de versions.
+La suite de test ne doit pas être executer completement à chaque ajout, modification ou suppression de test.
+L'execution de la suite de test complete relève des CI de github. Seul les tests des ajouts, modifications ou suppression doivent être executer.
 
 ## Module atelier — FC-6
 

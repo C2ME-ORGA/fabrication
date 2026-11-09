@@ -39,7 +39,9 @@ class WorkOrderPolicy
         return $user->isAdmin()
             && $workOrder->status === WorkOrderStatus::Draft
             && $workOrder->documents()->doesntExist()
-            && $workOrder->documentSnapshots()->doesntExist();
+            && $workOrder->documentSnapshots()->doesntExist()
+            && $workOrder->bomImports()->doesntExist()
+            && ! $workOrder->hasRecordedItemProduction();
     }
 
     /**
@@ -72,5 +74,14 @@ class WorkOrderPolicy
         return $user->isAdmin()
             && ! $workOrder->isLocked()
             && $workOrder->be_approved_by === null;
+    }
+
+    /**
+     * Gestion de la nomenclature : création, import et actions de masse.
+     * Les règles fines par pièce sont dans WorkOrderItemPolicy.
+     */
+    public function manageItems(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->isAdmin() && ! $workOrder->isLocked();
     }
 }

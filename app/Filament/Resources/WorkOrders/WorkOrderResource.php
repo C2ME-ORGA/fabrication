@@ -6,6 +6,8 @@ use App\Filament\Resources\WorkOrders\Pages\CreateWorkOrder;
 use App\Filament\Resources\WorkOrders\Pages\EditWorkOrder;
 use App\Filament\Resources\WorkOrders\Pages\ListWorkOrders;
 use App\Filament\Resources\WorkOrders\Pages\ViewWorkOrder;
+use App\Filament\Resources\WorkOrders\RelationManagers\BomImportsRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\ItemsRelationManager;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderForm;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderInfolist;
 use App\Filament\Resources\WorkOrders\Tables\WorkOrdersTable;
@@ -46,6 +48,14 @@ class WorkOrderResource extends Resource
     public static function table(Table $table): Table
     {
         return WorkOrdersTable::configure($table);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            ItemsRelationManager::class,
+            BomImportsRelationManager::class,
+        ];
     }
 
     public static function getGloballySearchableAttributes(): array

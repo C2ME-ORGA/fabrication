@@ -43,6 +43,17 @@ Le dépôt était vide lors de la rédaction. Ce fichier décrit donc l'architec
 - unit_weight_kg nullable, total_weight_kg nullable, operation_group, status, notes
 - Les calculs de poids sont indicatifs uniquement s'ils ne proviennent pas de la nomenclature validée.
 
+### Import de nomenclature CSV (work_order_bom_imports)
+- Import strict et transactionnel dans un OF : analyse complète, prévisualisation, confirmation explicite puis revalidation serveur.
+- Format UTF-8 (BOM toléré), séparateurs `,`, `;` ou tabulation. Colonnes obligatoires : `mark`, `designation`, `quantity_planned`.
+- Colonnes interdites : `quantity_produced`, `quantity_rejected`, `status`, `total_weight_kg`.
+- Une seule ligne invalide rejette tout le fichier ; aucune écriture partielle.
+- Fusion uniquement des repères dont les caractéristiques techniques sont identiques ; seule `quantity_planned` est additionnée.
+- Un fichier ne peut être importé qu'une fois par OF (SHA-256 unique). Seuls les imports réussis sont historisés.
+- Un OF possédant un historique d'import ou une pièce déjà produite/rebutée ne peut pas être supprimé.
+- Fichier original conservé sur le disque privé `bom_imports`, téléchargement via route authentifiée et policy.
+- Erreurs présentées avec ligne, colonne, valeur et motif. Les aperçus ne créent ni pièce, ni historique, ni fichier.
+
 ### Opérations atelier (work_order_operations)
 - id, work_order_item_id nullable, work_order_id
 - sequence, operation_type (cutting / preparation / fitting / welding / inspection / coating / marking / packing / other)

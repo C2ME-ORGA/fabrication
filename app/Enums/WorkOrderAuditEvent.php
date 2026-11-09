@@ -22,6 +22,13 @@ enum WorkOrderAuditEvent: string implements HasLabel
     case QualityCheck = 'quality_check';
     case Completed = 'completed';
     case Cancelled = 'cancelled';
+    case ItemCreated = 'item_created';
+    case ItemUpdated = 'item_updated';
+    case ItemDeleted = 'item_deleted';
+    case ItemMerged = 'item_merged';
+    case ItemProductionRecorded = 'item_production_recorded';
+    case ItemStatusChanged = 'item_status_changed';
+    case BomImported = 'bom_imported';
 
     public function getLabel(): string
     {
@@ -36,6 +43,13 @@ enum WorkOrderAuditEvent: string implements HasLabel
             self::QualityCheck => 'Passage en contrôle qualité',
             self::Completed => 'Fin de l\'OF',
             self::Cancelled => 'Annulation de l\'OF',
+            self::ItemCreated => 'Création d\'une pièce',
+            self::ItemUpdated => 'Modification d\'une pièce',
+            self::ItemDeleted => 'Suppression d\'une pièce',
+            self::ItemMerged => 'Fusion de repères',
+            self::ItemProductionRecorded => 'Saisie de production',
+            self::ItemStatusChanged => 'Changement d\'état d\'une pièce',
+            self::BomImported => 'Import de nomenclature',
         };
     }
 }

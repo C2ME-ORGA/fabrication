@@ -185,6 +185,79 @@ La remise en revue est une action explicite et autorisée sur un OF `released`, 
 
 `document_audit_logs` couvre : création/modification/archivage du document, dépôt, soumission, approbation, refus, remplacement, figeage à la libération, remise en revue et téléchargement. Chaque ligne conserve l'utilisateur, la date, la version, l'OF et le commentaire éventuel.
 
+## Pièces, repères et nomenclature (BOM)
+
+### Modèle
+
+- **`work_order_items`** : pièces d'un OF. Unicité `(work_order_id, mark)`. Le repère est normalisé (trim, espaces réduits, accents translittérés, majuscules) avant stockage afin d'obtenir le même comportement sous MySQL et SQLite.
+- **`work_order_bom_imports`** : historique des imports réussis. Unicité `(work_order_id, sha256)`. La suppression d'un OF possédant un import est restreinte ; l'historique n'est jamais supprimé silencieusement.
+- Un OF ne peut pas être supprimé si l'une de ses pièces possède une quantité fabriquée ou rebutée : l'historique de production est conservé.
+
+Champs principaux : `designation`, `profile`, `steel_grade`, `length_mm`, `quantity_planned`, `quantity_produced`, `quantity_rejected`, `unit_weight_kg`, `total_weight_kg`, `operation_group`, `status`, `notes`.
+
+### Quantités et poids
+
+- `quantity_produced` représente le nombre total de pièces produites, rebuts compris.
+- `quantity_accepted = quantity_produced - quantity_rejected` (calculé, non stocké).
+- `quantity_remaining = max(quantity_planned - quantity_accepted, 0)` : les rebuts doivent être refabriqués.
+- Contraintes : quantités entières, non négatives, `quantity_rejected <= quantity_produced`.
+- `total_weight_kg = unit_weight_kg × quantity_planned`, calculé côté serveur et recalculé à chaque sauvegarde. Aucune valeur de poids total n'est acceptée depuis un formulaire ou un CSV.
+
+### Statuts
+
+| Statut | Libellé |
+| --- | --- |
+| `todo` | À fabriquer |
+| `in_progress` | En fabrication |
+| `partially_produced` | Partiellement fabriquée |
+| `produced` | Fabriquée |
+| `closed` | Clôturée |
+| `cancelled` | Annulée |
+
+La quantité acceptée détermine l'état de production. `closed` et `cancelled` sont des états finaux et nécessitent une action explicite. Les transitions sont contrôlées par `WorkOrderItemStatus` et `WorkOrderItemService`, jamais par un formulaire.
+
+### Fusion des repères
+
+Identité technique : `designation`, `profile`, `steel_grade`, `length_mm` normalisés.
+
+- Même repère + caractéristiques identiques : fusion, addition de `quantity_planned` uniquement.
+- Production, rebuts, statut et informations existantes conservés.
+- Caractéristiques différentes : refus explicite, aucune écriture partielle.
+- Un repère peut exister dans plusieurs OF différents.
+
+### Import CSV
+
+Format strict, transactionnel et idempotent :
+
+- UTF-8 obligatoire, BOM UTF-8 toléré, UTF-16 et encodages invalides rejetés.
+- Séparateur détecté : virgule, point-virgule ou tabulation.
+- Colonnes obligatoires : `mark`, `designation`, `quantity_planned`.
+- Colonnes optionnelles : `profile`, `steel_grade`, `length_mm`, `unit_weight_kg`, `operation_group`, `notes`.
+- Colonnes interdites : `quantity_produced`, `quantity_rejected`, `status`, `total_weight_kg`.
+- Taille maximale configurable : 5 Mo par défaut (`BOM_IMPORTS_MAX_SIZE_KB`).
+- Toutes les lignes sont validées avant écriture. Une seule ligne invalide rejette l'import complet.
+- Les erreurs sont retournées avec numéro de ligne, colonne, valeur et motif.
+- Les doublons internes et les doublons avec les pièces existantes sont détectés avant confirmation.
+- La prévisualisation ne crée aucune pièce, aucun historique et ne stocke aucun fichier.
+- La confirmation relit et revalide le fichier côté serveur, verrouille l'OF et les pièces concernées, recalcule les fusions puis exécute l'import dans une transaction unique.
+- Les colonnes supplémentaires sont ignorées et enregistrées dans le mapping.
+
+### Stockage et historique
+
+- Disque privé `bom_imports` : `storage/app/private/bom_imports`, jamais dans `public/`.
+- Chemin généré côté serveur : `work-orders/{work_order_id}/{uuid}.csv`. Le nom d'origine est une métadonnée.
+- SHA-256 calculé sur le fichier brut. Un même hash ne peut être importé qu'une fois sur un même OF.
+- Seuls les imports confirmés et réussis sont historisés (`completed`). Un aperçu ou un import rejeté ne crée aucun fichier, aucune ligne et ne bloque pas une nouvelle tentative.
+- Si la transaction échoue après stockage, le nouveau fichier est supprimé.
+- Téléchargement par route authentifiée et policy `WorkOrderBomImportPolicy` ; aucun chemin physique n'est exposé.
+
+### Limites connues
+
+- SQLite ne permet pas de démontrer le verrouillage concurrent ; les tests MySQL dédiés valident le verrou OF et la contrainte unique de hash.
+- L'import ne modifie jamais les quantités fabriquées ou rebutées.
+- Les fichiers CSV sont limités à 5 Mo et 5 000 lignes par défaut, configurables.
+- L'import ne gère pas encore les colonnes de production, les opérations atelier détaillées ou les contrôles qualité.
+
 ## Administration Filament
 
 Ressources disponibles dans le panneau `/admin` :

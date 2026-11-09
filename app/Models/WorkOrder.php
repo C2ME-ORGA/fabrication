@@ -81,6 +81,26 @@ class WorkOrder extends Model
     }
 
     /**
+     * Pièces et repères de la nomenclature de cet OF.
+     *
+     * @return HasMany<WorkOrderItem, $this>
+     */
+    public function items(): HasMany
+    {
+        return $this->hasMany(WorkOrderItem::class);
+    }
+
+    /**
+     * Historique des imports de nomenclature confirmés pour cet OF.
+     *
+     * @return HasMany<WorkOrderBomImport, $this>
+     */
+    public function bomImports(): HasMany
+    {
+        return $this->hasMany(WorkOrderBomImport::class)->latest('imported_at');
+    }
+
+    /**
      * Frozen document references captured at release and re-review time.
      *
      * @return HasMany<WorkOrderDocumentSnapshot, $this>
@@ -135,6 +155,20 @@ class WorkOrder extends Model
     public function isLocked(): bool
     {
         return $this->status->isLocked();
+    }
+
+    /**
+     * Indique si au moins une pièce porte une production ou un rebut.
+     * Ce contrôle empêche la suppression d'un OF de perdre cet historique.
+     */
+    public function hasRecordedItemProduction(): bool
+    {
+        return $this->items()
+            ->where(function (Builder $query): void {
+                $query->where('quantity_produced', '>', 0)
+                    ->orWhere('quantity_rejected', '>', 0);
+            })
+            ->exists();
     }
 
     public function canTransitionTo(WorkOrderStatus $status): bool

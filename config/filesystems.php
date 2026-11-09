@@ -47,6 +47,15 @@ return [
             'report' => false,
         ],
 
+        'bom_imports' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/bom_imports'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

@@ -10,7 +10,6 @@ use App\Models\Document;
 use App\Models\Job;
 use App\Models\User;
 use App\Models\WorkOrder;
-use App\Models\WorkOrderAuditLog;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +17,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 
 /**
  * Single entry point for work order mutations.
@@ -33,6 +31,7 @@ class WorkOrderService
         protected WorkOrderNumberGenerator $numbers,
         protected DocumentSnapshotService $documentSnapshots,
         protected DocumentApplicabilityService $applicability,
+        protected WorkOrderAuditService $auditLog,
     ) {}
 
     /**
@@ -410,6 +409,20 @@ class WorkOrderService
                 );
             }
 
+            if ($locked->bomImports()->exists()) {
+                $this->fail(
+                    'status',
+                    'Un ordre de fabrication possédant un historique d\'import de nomenclature ne peut pas être supprimé.',
+                );
+            }
+
+            if ($locked->hasRecordedItemProduction()) {
+                $this->fail(
+                    'status',
+                    'Un ordre de fabrication dont des pièces ont une production ou des rebuts ne peut pas être supprimé.',
+                );
+            }
+
             $locked->delete();
         });
     }
@@ -433,6 +446,22 @@ class WorkOrderService
                 "Un ordre de fabrication « {$workOrder->status->getLabel()} » ne peut plus être modifié.",
             );
         }
+    }
+
+    /**
+     * Verrouille un OF et vérifie qu'il accepte encore des modifications.
+     *
+     * Point d'entrée public minimal pour les services satellites (pièces,
+     * nomenclature) qui doivent réutiliser exactement les règles de FC-4
+     * sans dupliquer le contrôle de verrouillage.
+     */
+    public function lockForMutation(WorkOrder $workOrder): WorkOrder
+    {
+        $locked = $this->lock($workOrder);
+
+        $this->assertEditable($locked);
+
+        return $locked;
     }
 
     /**
@@ -544,24 +573,15 @@ class WorkOrderService
         ?string $comment = null,
         array $metadata = [],
     ): void {
-        // Un événement d'audit doit toujours être rattaché à un numéro d'OF,
-        // même si l'OF a été supprimé entre-temps (le numéro est alors conservé).
-        if ($workOrder->number === null) {
-            throw new RuntimeException(
-                'Impossible d\'écrire un événement d\'audit : l\'ordre de fabrication ne possède pas de numéro.'
-            );
-        }
-
-        WorkOrderAuditLog::query()->create([
-            'work_order_id' => $workOrder->getKey(),
-            'work_order_number' => $workOrder->number,
-            'user_id' => $actor?->getKey() ?? Auth::id(),
-            'event' => $event->value,
-            'from_status' => $fromStatus,
-            'to_status' => $toStatus,
-            'comment' => $comment,
-            'metadata' => $metadata === [] ? null : $metadata,
-        ]);
+        $this->auditLog->record(
+            $workOrder,
+            $event,
+            $actor,
+            $fromStatus,
+            $toStatus,
+            $comment,
+            $metadata,
+        );
     }
 
     /**

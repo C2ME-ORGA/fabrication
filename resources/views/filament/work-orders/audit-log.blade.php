@@ -41,10 +41,10 @@
                             </span>
                         </td>
                         <td class="py-2 pr-4">
-                            {{ $log->from_status ? \App\Enums\WorkOrderStatus::from($log->from_status)->getLabel() : '—' }}
+                            {{ $log->from_status ? (\App\Enums\WorkOrderStatus::tryFrom($log->from_status)?->getLabel() ?? $log->from_status) : '—' }}
                         </td>
                         <td class="py-2 pr-4">
-                            {{ $log->to_status ? \App\Enums\WorkOrderStatus::from($log->to_status)->getLabel() : '—' }}
+                            {{ $log->to_status ? (\App\Enums\WorkOrderStatus::tryFrom($log->to_status)?->getLabel() ?? $log->to_status) : '—' }}
                         </td>
                         <td class="py-2 pr-4">{{ $log->comment ?? '—' }}</td>
                     </tr>

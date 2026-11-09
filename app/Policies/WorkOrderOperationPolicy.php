@@ -22,7 +22,7 @@ class WorkOrderOperationPolicy
 
     public function view(User $user, WorkOrderOperation $operation): bool
     {
-        return true;
+        return $operation->workOrder->allowsOperationExecution();
     }
 
     public function update(User $user, WorkOrderOperation $operation): bool

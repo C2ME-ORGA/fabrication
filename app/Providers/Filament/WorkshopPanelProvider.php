@@ -3,6 +3,9 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Resources\WorkshopRoutings\WorkshopRoutingResource;
+use App\Filament\Workshop\Pages\WorkshopDashboard;
+use App\Filament\Workshop\Pages\WorkshopSupervision;
+use App\Filament\Workshop\Resources\WorkshopOperations\WorkshopOperationResource;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -39,8 +42,12 @@ class WorkshopPanelProvider extends PanelProvider
             ])
             ->resources([
                 WorkshopRoutingResource::class,
+                WorkshopOperationResource::class,
             ])
-            ->pages([])
+            ->pages([
+                WorkshopDashboard::class,
+                WorkshopSupervision::class,
+            ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -55,6 +62,6 @@ class WorkshopPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
-            ->homeUrl(fn (): string => WorkshopRoutingResource::getUrl('index'));
+            ->homeUrl(fn (): string => WorkshopDashboard::getUrl(panel: 'workshop'));
     }
 }

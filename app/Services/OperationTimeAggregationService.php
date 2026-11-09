@@ -64,6 +64,68 @@ class OperationTimeAggregationService
     }
 
     /**
+     * Calcule les agrégats d'un ensemble d'OF avec un nombre constant de
+     * requêtes : opérations puis entrées de temps.
+     *
+     * @param  Collection<int, WorkOrder>  $workOrders
+     * @return array<int, WorkOrderTimeSummary>
+     */
+    public function forWorkOrders(Collection $workOrders): array
+    {
+        if ($workOrders->isEmpty()) {
+            return [];
+        }
+
+        $operations = WorkOrderOperation::query()
+            ->whereIn('work_order_id', $workOrders->pluck('id'))
+            ->get(['id', 'work_order_id', 'estimated_duration_minutes']);
+
+        $entries = OperationTimeEntry::query()
+            ->whereIn('work_order_operation_id', $operations->pluck('id'))
+            ->get();
+
+        $entriesByOperation = $entries->groupBy('work_order_operation_id');
+        $operationsByWorkOrder = $operations->groupBy('work_order_id');
+        $summaries = [];
+
+        foreach ($workOrders as $workOrder) {
+            /** @var Collection<int, WorkOrderOperation> $workOrderOperations */
+            $workOrderOperations = $operationsByWorkOrder->get(
+                $workOrder->getKey(),
+                new Collection,
+            );
+
+            /** @var Collection<int, OperationTimeEntry> $workOrderEntries */
+            $workOrderEntries = new Collection;
+
+            foreach ($workOrderOperations as $operation) {
+                $workOrderEntries = $workOrderEntries->merge(
+                    $entriesByOperation->get($operation->getKey(), new Collection),
+                );
+            }
+
+            $computed = $this->compute($workOrderEntries);
+            $estimated = (int) $workOrderOperations->sum(
+                fn (WorkOrderOperation $operation): int => $this->minutesToSeconds($operation->estimated_duration_minutes),
+            );
+
+            $summaries[(int) $workOrder->getKey()] = new WorkOrderTimeSummary(
+                workOrderId: (int) $workOrder->getKey(),
+                realSeconds: $computed['realSeconds'],
+                estimatedSeconds: $estimated,
+                varianceSeconds: $computed['realSeconds'] - $estimated,
+                consumptionPercent: $this->percentage($computed['realSeconds'], $estimated),
+                calendarSeconds: $computed['calendarSeconds'],
+                byOperator: $computed['byOperator'],
+                byOperation: $computed['byOperation'],
+                entryCount: $computed['entryCount'],
+            );
+        }
+
+        return $summaries;
+    }
+
+    /**
      * Temps réel calculé à partir d'une collection déjà chargée.
      *
      * @param  Collection<int, OperationTimeEntry>  $entries

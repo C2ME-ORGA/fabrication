@@ -2,12 +2,17 @@
 
 namespace App\Filament\Resources\WorkOrders;
 
+use App\Enums\NonConformityStatus;
+use App\Enums\QualityControlStatus;
 use App\Filament\Resources\WorkOrders\Pages\CreateWorkOrder;
 use App\Filament\Resources\WorkOrders\Pages\EditWorkOrder;
 use App\Filament\Resources\WorkOrders\Pages\ListWorkOrders;
 use App\Filament\Resources\WorkOrders\Pages\ViewWorkOrder;
 use App\Filament\Resources\WorkOrders\RelationManagers\BomImportsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\ItemsRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\NonConformitiesRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\QualityControlsRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\QualityDeviationsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\WorkOrderOperationsRelationManager;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderForm;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderInfolist;
@@ -18,6 +23,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class WorkOrderResource extends Resource
@@ -51,11 +57,28 @@ class WorkOrderResource extends Resource
         return WorkOrdersTable::configure($table);
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->withCount([
+            'qualityControls as quality_controls_pending_count' => fn (Builder $query): Builder => $query->whereIn('status', [
+                QualityControlStatus::Pending->value,
+                QualityControlStatus::InProgress->value,
+            ]),
+            'nonConformities as open_non_conformities_count' => fn (Builder $query): Builder => $query->whereNotIn('status', [
+                NonConformityStatus::Closed->value,
+                NonConformityStatus::Cancelled->value,
+            ]),
+        ]);
+    }
+
     public static function getRelations(): array
     {
         return [
             WorkOrderOperationsRelationManager::class,
             ItemsRelationManager::class,
+            QualityControlsRelationManager::class,
+            NonConformitiesRelationManager::class,
+            QualityDeviationsRelationManager::class,
             BomImportsRelationManager::class,
         ];
     }

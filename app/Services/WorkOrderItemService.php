@@ -5,9 +5,11 @@ namespace App\Services;
 use App\DTO\WorkOrderItemSummary;
 use App\Enums\WorkOrderAuditEvent;
 use App\Enums\WorkOrderItemStatus;
+use App\Models\QualityControlResult;
 use App\Models\User;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderItem;
+use App\Models\WorkOrderQualityControl;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +45,7 @@ class WorkOrderItemService
     public function __construct(
         protected WorkOrderService $workOrders,
         protected WorkOrderAuditService $auditLog,
+        protected WorkOrderQualityPlanService $qualityPlan,
     ) {}
 
     /**
@@ -115,6 +118,10 @@ class WorkOrderItemService
                 ['quantity_planned' => $item->quantity_planned],
             );
 
+            // L'ajout d'un repère peut modifier le nombre de résultats attendus
+            // des contrôles en portée item. Le recalcul est audité.
+            $this->qualityPlan->recalculateForItemChange($lockedWorkOrder, $actor);
+
             return $item->refresh();
         }, attempts: 3);
     }
@@ -184,6 +191,8 @@ class WorkOrderItemService
                     );
                 }
 
+                $this->assertItemHasNoQualityHistory($source);
+
                 $plannedAdded = array_key_exists('quantity_planned', $validated)
                     ? (int) $validated['quantity_planned']
                     : $source->quantity_planned;
@@ -208,6 +217,8 @@ class WorkOrderItemService
                         'quantity_planned' => $target->quantity_planned,
                     ],
                 );
+
+                $this->qualityPlan->recalculateForItemChange($lockedWorkOrder, $actor);
 
                 return $target->refresh();
             }
@@ -259,6 +270,8 @@ class WorkOrderItemService
                 );
             }
 
+            $this->assertItemHasNoQualityHistory($lockedItem);
+
             $mark = $lockedItem->mark;
 
             $lockedItem->delete();
@@ -270,6 +283,8 @@ class WorkOrderItemService
                 $lockedItem,
                 ['mark' => $mark],
             );
+
+            $this->qualityPlan->recalculateForItemChange($lockedWorkOrder, $actor);
         }, attempts: 3);
     }
 
@@ -524,6 +539,31 @@ class WorkOrderItemService
             $this->fail(
                 'item',
                 'Champ(s) non modifiable(s) directement : '.implode(', ', $forbidden).'.',
+            );
+        }
+    }
+
+    /**
+     * Un repère référencé par un résultat qualité ou ciblé par un contrôle ne
+     * peut être ni supprimé ni fusionné.
+     */
+    protected function assertItemHasNoQualityHistory(WorkOrderItem $item): void
+    {
+        if (QualityControlResult::query()
+            ->where('work_order_item_id', $item->getKey())
+            ->exists()) {
+            $this->fail(
+                'item',
+                'Ce repère est référencé par un résultat qualité et ne peut pas être supprimé ou fusionné.',
+            );
+        }
+
+        if (WorkOrderQualityControl::query()
+            ->where('work_order_item_id', $item->getKey())
+            ->exists()) {
+            $this->fail(
+                'item',
+                'Ce repère est ciblé par un contrôle qualité et ne peut pas être supprimé ou fusionné.',
             );
         }
     }

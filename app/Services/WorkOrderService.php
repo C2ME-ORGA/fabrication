@@ -3,12 +3,16 @@
 namespace App\Services;
 
 use App\Enums\JobStatus;
+use App\Enums\NonConformityStatus;
+use App\Enums\QualityAuditEvent;
+use App\Enums\QualityAuditSubject;
 use App\Enums\WorkOrderAuditEvent;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
 use App\Enums\WorkshopOperationStatus;
 use App\Models\Document;
 use App\Models\Job;
+use App\Models\NonConformity;
 use App\Models\OperationTimeEntry;
 use App\Models\User;
 use App\Models\WorkOrder;
@@ -34,6 +38,8 @@ class WorkOrderService
         protected DocumentSnapshotService $documentSnapshots,
         protected DocumentApplicabilityService $applicability,
         protected WorkOrderAuditService $auditLog,
+        protected QualityClosureEligibilityService $qualityClosure,
+        protected QualityAuditService $qualityAudit,
     ) {}
 
     /**
@@ -166,9 +172,10 @@ class WorkOrderService
         // L'obsolescence BE doit être auditée après le rollback de la transition
         // refusée : un audit écrit dans la transaction métier serait annulé.
         $obsoleteApproval = null;
+        $qualityBlocked = null;
 
         try {
-            return DB::transaction(function () use ($workOrder, $target, $actor, $comment, &$obsoleteApproval): WorkOrder {
+            return DB::transaction(function () use ($workOrder, $target, $actor, $comment, &$obsoleteApproval, &$qualityBlocked): WorkOrder {
                 $locked = $this->lock($workOrder);
                 $from = $locked->status;
 
@@ -252,6 +259,15 @@ class WorkOrderService
                         );
                     }
 
+                    $this->assertQualityEligible(
+                        $locked,
+                        QualityClosureEligibilityService::PHASE_RELEASE,
+                        $from,
+                        $target,
+                        $actor,
+                        $qualityBlocked,
+                    );
+
                     $locked->released_by = $actor?->getKey() ?? Auth::id();
                     $locked->released_at = now();
 
@@ -266,6 +282,15 @@ class WorkOrderService
                 }
 
                 if ($target === WorkOrderStatus::Completed) {
+                    $this->assertQualityEligible(
+                        $locked,
+                        QualityClosureEligibilityService::PHASE_CLOSURE,
+                        $from,
+                        $target,
+                        $actor,
+                        $qualityBlocked,
+                    );
+
                     $locked->actual_end_at ??= now();
                 }
 
@@ -281,6 +306,10 @@ class WorkOrderService
                     $target->value,
                     $comment,
                 );
+
+                if ($target === WorkOrderStatus::Cancelled) {
+                    $this->auditCancellationWithOpenQualityIssues($locked, $actor);
+                }
 
                 return $locked->refresh();
             }, attempts: 3);
@@ -300,8 +329,103 @@ class WorkOrderService
                 });
             }
 
+            if ($qualityBlocked !== null) {
+                $workOrderForAudit = WorkOrder::query()->findOrFail($qualityBlocked['work_order_id']);
+
+                DB::transaction(function () use ($workOrderForAudit, $actor, $qualityBlocked): void {
+                    $message = $qualityBlocked['eligibility']->message();
+
+                    $this->audit(
+                        $workOrderForAudit,
+                        WorkOrderAuditEvent::QualityClosureBlocked,
+                        $actor,
+                        $qualityBlocked['from_status'],
+                        $qualityBlocked['to_status'],
+                        $message,
+                        ['quality_eligibility' => $qualityBlocked['eligibility']->toArray()],
+                    );
+
+                    $this->qualityAudit->record(
+                        QualityAuditEvent::ClosureBlocked,
+                        QualityAuditSubject::WorkOrder,
+                        (int) $workOrderForAudit->getKey(),
+                        $workOrderForAudit->number,
+                        $actor,
+                        $workOrderForAudit,
+                        $qualityBlocked['from_status'],
+                        $qualityBlocked['to_status'],
+                        $message,
+                        ['eligibility' => $qualityBlocked['eligibility']->toArray()],
+                    );
+                });
+            }
+
             throw $exception;
         }
+    }
+
+    protected function assertQualityEligible(
+        WorkOrder $workOrder,
+        string $phase,
+        WorkOrderStatus $from,
+        WorkOrderStatus $to,
+        ?User $actor,
+        ?array &$qualityBlocked,
+    ): void {
+        $eligibility = $this->qualityClosure->evaluate($workOrder, $phase);
+
+        if (! $eligibility->eligible) {
+            $qualityBlocked = [
+                'work_order_id' => $workOrder->getKey(),
+                'phase' => $phase,
+                'from_status' => $from->value,
+                'to_status' => $to->value,
+                'eligibility' => $eligibility,
+            ];
+
+            $this->fail('quality', $eligibility->message());
+        }
+
+        $this->qualityAudit->record(
+            QualityAuditEvent::ClosureEvaluated,
+            QualityAuditSubject::WorkOrder,
+            (int) $workOrder->getKey(),
+            $workOrder->number,
+            $actor,
+            $workOrder,
+            $from->value,
+            $to->value,
+            null,
+            ['phase' => $phase, 'eligibility' => $eligibility->toArray()],
+        );
+    }
+
+    protected function auditCancellationWithOpenQualityIssues(WorkOrder $workOrder, ?User $actor): void
+    {
+        $openCount = NonConformity::query()
+            ->where('work_order_id', $workOrder->getKey())
+            ->whereNotIn('status', [
+                NonConformityStatus::Closed->value,
+                NonConformityStatus::Cancelled->value,
+            ])
+            ->count();
+
+        if ($openCount === 0) {
+            return;
+        }
+
+        $this->qualityAudit->record(
+            QualityAuditEvent::WorkOrderCancelledWithOpenQualityIssues,
+            QualityAuditSubject::WorkOrder,
+            (int) $workOrder->getKey(),
+            $workOrder->number,
+            $actor,
+            $workOrder,
+            WorkOrderStatus::Cancelled->value,
+            WorkOrderStatus::Cancelled->value,
+            "Annulation de l'OF avec {$openCount} non-conformité(s) encore ouverte(s).",
+            ['open_non_conformities' => $openCount],
+        );
     }
 
     /**
@@ -431,6 +555,13 @@ class WorkOrderService
                 $this->fail(
                     'status',
                     'Un ordre de fabrication dont des pièces ont une production ou des rebuts ne peut pas être supprimé.',
+                );
+            }
+
+            if ($locked->qualityResults()->exists()) {
+                $this->fail(
+                    'status',
+                    'Un ordre de fabrication possédant des résultats de contrôle qualité ne peut pas être supprimé.',
                 );
             }
 

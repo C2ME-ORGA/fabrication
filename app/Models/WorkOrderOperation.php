@@ -139,6 +139,16 @@ class WorkOrderOperation extends Model
     }
 
     /**
+     * Contrôles qualité rattachés à cette opération.
+     *
+     * @return HasMany<WorkOrderQualityControl, $this>
+     */
+    public function qualityControls(): HasMany
+    {
+        return $this->hasMany(WorkOrderQualityControl::class);
+    }
+
+    /**
      * Dernière entrée d'audit correspondant à une transition de statut.
      * Permet d'afficher l'utilisateur responsable de la dernière action.
      *

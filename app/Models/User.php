@@ -101,4 +101,87 @@ class User extends Authenticatable implements FilamentUser
     {
         return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
     }
+
+    /**
+     * Tout utilisateur authentifié peut réaliser un contrôle sur un OF en
+     * exécution ou en phase qualité. Le service vérifie ensuite l'état de
+     * l'OF et du contrôle.
+     */
+    public function canRecordQualityControls(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Validation des résultats : responsable atelier, responsable qualité et
+     * administrateur. La ségrégation (contrôleur, rang, criticité) est
+     * appliquée dans le service, pas dans cette méthode.
+     */
+    public function canValidateQualityControls(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canValidateCriticalQualityControls(): bool
+    {
+        return $this->canValidateQualityControls();
+    }
+
+    /**
+     * Consultation de l'historique qualité d'un OF clôturé ou annulé.
+     */
+    public function canViewQualityHistory(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canReportNonConformity(): bool
+    {
+        return true;
+    }
+
+    public function canManageNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canCloseMinorNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canCloseMajorNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canReopenNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canVerifyNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canGrantQualityDeviations(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canApproveQualityDeviations(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canRevokeQualityDeviations(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canViewQualityEligibility(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
 }

@@ -23,6 +23,7 @@ enum QualityAuditSubject: string implements HasLabel
     case TemplateVersion = 'template_version';
     case Template = 'template';
     case Requirement = 'requirement';
+    case WorkOrder = 'work_order';
 
     public function getLabel(): string
     {
@@ -37,6 +38,7 @@ enum QualityAuditSubject: string implements HasLabel
             self::TemplateVersion => 'Version de modèle',
             self::Template => 'Modèle de contrôle',
             self::Requirement => 'Exigence qualité',
+            self::WorkOrder => 'Ordre de fabrication',
         };
     }
 }

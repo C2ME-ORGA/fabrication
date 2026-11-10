@@ -114,13 +114,12 @@ class QualityControlTemplate extends Model
 
     /**
      * Le modèle a-t-il déjà été copié dans un plan qualité d'OF ?
-     *
-     * Le plan qualité est livré au Lot 3 ; cette méthode sera étendue à ce
-     * moment-là pour consulter work_order_quality_controls.
      */
     public function hasGeneratedControls(): bool
     {
-        return false;
+        return WorkOrderQualityControl::query()
+            ->where('template_code', $this->code)
+            ->exists();
     }
 
     public function scopeActive(Builder $query): void

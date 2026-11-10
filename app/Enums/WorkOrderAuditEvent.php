@@ -29,6 +29,7 @@ enum WorkOrderAuditEvent: string implements HasLabel
     case ItemProductionRecorded = 'item_production_recorded';
     case ItemStatusChanged = 'item_status_changed';
     case BomImported = 'bom_imported';
+    case QualityClosureBlocked = 'quality_closure_blocked';
 
     public function getLabel(): string
     {
@@ -50,6 +51,7 @@ enum WorkOrderAuditEvent: string implements HasLabel
             self::ItemProductionRecorded => 'Saisie de production',
             self::ItemStatusChanged => 'Changement d\'état d\'une pièce',
             self::BomImported => 'Import de nomenclature',
+            self::QualityClosureBlocked => 'Libération ou clôture bloquée pour motif qualité',
         };
     }
 }

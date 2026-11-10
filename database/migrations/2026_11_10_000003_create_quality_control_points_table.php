@@ -14,7 +14,7 @@ return new class extends Migration
             // Les points appartiennent à une version précise du modèle : une
             // version active est immuable (garde applicative dans le modèle).
             $table->foreignId('quality_control_template_version_id')
-                ->constrained('quality_control_template_versions')
+                ->constrained('quality_control_template_versions', 'id', 'qc_points_version_foreign')
                 ->cascadeOnDelete();
 
             $table->unsignedInteger('position');

@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
  * Une version active est immuable. Toute évolution passe par une nouvelle
  * version brouillon créée par copie de la version active (copy-on-write).
  * L'activation est transactionnelle et garantit qu'une seule version reste
- * active par modèle (index unique sur colonne générée).
+ * active par modèle (valeur maintenue sous verrou + index unique).
  */
 class QualityControlTemplateVersionService
 {
@@ -169,9 +169,11 @@ class QualityControlTemplateVersionService
                 ->get();
 
             foreach ($previousActive as $previous) {
-                $previous->status = QualityControlTemplateVersionStatus::Retired;
-                $previous->retired_at = now();
-                $previous->save();
+                $previous->forceFill([
+                    'status' => QualityControlTemplateVersionStatus::Retired,
+                    'retired_at' => now(),
+                    'active_template_id' => null,
+                ])->save();
 
                 $this->audit->record(
                     QualityAuditEvent::TemplateVersionRetired,
@@ -187,11 +189,13 @@ class QualityControlTemplateVersionService
                 );
             }
 
-            $lockedVersion->status = QualityControlTemplateVersionStatus::Active;
-            $lockedVersion->activated_by = $actor?->getKey();
-            $lockedVersion->activated_at = now();
-            $lockedVersion->retired_at = null;
-            $lockedVersion->save();
+            $lockedVersion->forceFill([
+                'status' => QualityControlTemplateVersionStatus::Active,
+                'active_template_id' => $lockedTemplate->getKey(),
+                'activated_by' => $actor?->getKey(),
+                'activated_at' => now(),
+                'retired_at' => null,
+            ])->save();
 
             $lockedTemplate->forceFill([
                 'is_active' => true,
@@ -237,9 +241,11 @@ class QualityControlTemplateVersionService
                 ->first();
 
             if ($activeVersion !== null) {
-                $activeVersion->status = QualityControlTemplateVersionStatus::Retired;
-                $activeVersion->retired_at = now();
-                $activeVersion->save();
+                $activeVersion->forceFill([
+                    'status' => QualityControlTemplateVersionStatus::Retired,
+                    'retired_at' => now(),
+                    'active_template_id' => null,
+                ])->save();
 
                 $this->audit->record(
                     QualityAuditEvent::TemplateVersionRetired,

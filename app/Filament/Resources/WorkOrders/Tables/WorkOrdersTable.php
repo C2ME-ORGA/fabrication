@@ -2,11 +2,14 @@
 
 namespace App\Filament\Resources\WorkOrders\Tables;
 
+use App\Enums\NonConformityStatus;
+use App\Enums\QualityControlStatus;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
 use App\Filament\Resources\Jobs\JobResource;
 use App\Filament\Resources\WorkOrders\Actions\WorkOrderDocumentActions;
 use App\Models\WorkOrder;
+use App\Services\QualityClosureEligibilityService;
 use App\Services\WorkOrderService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -16,8 +19,10 @@ use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
 
 class WorkOrdersTable
@@ -44,6 +49,24 @@ class WorkOrdersTable
                     ->label('Statut')
                     ->badge()
                     ->sortable(),
+                TextColumn::make('quality_eligibility')
+                    ->label('Éligibilité qualité')
+                    ->badge()
+                    ->state(fn (WorkOrder $record): string => app(QualityClosureEligibilityService::class)
+                        ->evaluate($record)
+                        ->eligible ? 'Éligible' : 'Bloquée')
+                    ->color(fn (string $state): string => $state === 'Éligible' ? 'success' : 'danger')
+                    ->toggleable(),
+                TextColumn::make('quality_controls_pending_count')
+                    ->label('Contrôles à faire')
+                    ->badge()
+                    ->color(fn (int $state): string => $state > 0 ? 'warning' : 'gray')
+                    ->toggleable(),
+                TextColumn::make('open_non_conformities_count')
+                    ->label('NC ouvertes')
+                    ->badge()
+                    ->color(fn (int $state): string => $state > 0 ? 'danger' : 'gray')
+                    ->toggleable(),
                 TextColumn::make('priority')
                     ->label('Priorité')
                     ->badge()
@@ -79,6 +102,33 @@ class WorkOrdersTable
                     ->label('Affaire')
                     ->relationship('job', 'code')
                     ->searchable(),
+                Filter::make('quality_controls_pending')
+                    ->label('Contrôles qualité à réaliser')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas(
+                        'qualityControls',
+                        fn (Builder $query): Builder => $query->whereIn('status', [
+                            QualityControlStatus::Pending->value,
+                            QualityControlStatus::InProgress->value,
+                        ]),
+                    )),
+                Filter::make('quality_controls_failed')
+                    ->label('Contrôles qualité en échec')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas(
+                        'qualityControls',
+                        fn (Builder $query): Builder => $query->where('status', QualityControlStatus::Failed->value),
+                    )),
+                Filter::make('open_non_conformities')
+                    ->label('Non-conformités ouvertes')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas(
+                        'nonConformities',
+                        fn (Builder $query): Builder => $query->whereNotIn('status', [
+                            NonConformityStatus::Closed->value,
+                            NonConformityStatus::Cancelled->value,
+                        ]),
+                    )),
             ])
             ->recordActions([
                 ViewAction::make(),

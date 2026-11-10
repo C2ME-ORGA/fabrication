@@ -178,6 +178,48 @@ class WorkOrder extends Model
     }
 
     /**
+     * Plan qualité généré pour cet ordre de fabrication.
+     *
+     * @return HasMany<WorkOrderQualityControl, $this>
+     */
+    public function qualityControls(): HasMany
+    {
+        return $this->hasMany(WorkOrderQualityControl::class)
+            ->orderBy('position')
+            ->orderBy('id');
+    }
+
+    /**
+     * Résultats qualité enregistrés sur cet ordre de fabrication.
+     *
+     * @return HasMany<QualityControlResult, $this>
+     */
+    public function qualityResults(): HasMany
+    {
+        return $this->hasMany(QualityControlResult::class);
+    }
+
+    /**
+     * Non-conformités rattachées à cet ordre de fabrication.
+     *
+     * @return HasMany<NonConformity, $this>
+     */
+    public function nonConformities(): HasMany
+    {
+        return $this->hasMany(NonConformity::class)->latest('id');
+    }
+
+    /**
+     * Dérogations qualité rattachées à cet ordre de fabrication.
+     *
+     * @return HasMany<QualityDeviation, $this>
+     */
+    public function qualityDeviations(): HasMany
+    {
+        return $this->hasMany(QualityDeviation::class)->latest('id');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function creator(): BelongsTo

@@ -108,6 +108,7 @@ class QualityControlTemplateVersionTest extends TestCase
         $this->assertSame(QualityControlTemplateVersionStatus::Active, $activated->status);
         $this->assertNotNull($activated->activated_at);
         $this->assertSame($this->actor->getKey(), $activated->activated_by);
+        $this->assertSame($template->getKey(), $activated->active_template_id);
 
         $template->refresh();
         $this->assertTrue($template->is_active);
@@ -150,7 +151,9 @@ class QualityControlTemplateVersionTest extends TestCase
 
         $this->assertSame(QualityControlTemplateVersionStatus::Retired, $firstVersion->fresh()->status);
         $this->assertNotNull($firstVersion->fresh()->retired_at);
+        $this->assertNull($firstVersion->fresh()->active_template_id);
         $this->assertSame(QualityControlTemplateVersionStatus::Active, $draft->fresh()->status);
+        $this->assertSame($template->getKey(), $draft->fresh()->active_template_id);
 
         $this->assertSame(1, QualityControlTemplateVersion::query()
             ->where('quality_control_template_id', $template->getKey())
@@ -185,6 +188,7 @@ class QualityControlTemplateVersionTest extends TestCase
 
         $this->assertFalse($template->fresh()->is_active);
         $this->assertSame(QualityControlTemplateVersionStatus::Retired, $version->fresh()->status);
+        $this->assertNull($version->fresh()->active_template_id);
     }
 
     public function test_the_only_draft_cannot_be_deleted_but_an_extra_draft_can(): void

@@ -277,6 +277,28 @@ Règles transverses à retenir :
 - la consultation et la correction historique des temps réservées aux responsables atelier et administrateurs ;
 - les journaux d'audit de l'atelier sont immuables et écrits dans la transaction métier.
 
+## Qualité — FC-7
+
+Le module qualité est documenté en détail dans [QUALITY.md](QUALITY.md). Il couvre :
+
+- les modèles de contrôle versionnés et leurs points (conformité, mesure, texte, liste) ;
+- les exigences qualité portées par les opérations de gamme et la génération de copies indépendantes dans les OF ;
+- l'échantillonnage (`all`, `every_n`, `fixed`) et le recalcul audité de `required_results` ;
+- la saisie des résultats, l'évaluation des tolérances et la validation simple ou critique ;
+- les non-conformités, actions correctives et vérifications par gravité ;
+- les dérogations sélectives, motivées, approuvées et révocables ;
+- le verrou de clôture conditionnel et l'éligibilité calculée côté serveur ;
+- les preuves stockées sur disque privé avec téléchargement authentifié ;
+- les écrans atelier de contrôle, de tableau de bord et de supervision.
+
+Règles transverses à retenir :
+
+- le verrou qualité ne s'applique qu'aux OF portant des exigences obligatoires ;
+- le contrôleur ne peut jamais valider son propre résultat ;
+- un point critique exige deux validateurs distincts, sans contournement administrateur ;
+- une dérogation ne modifie jamais un résultat ou une validation ;
+- les résultats, validations et journaux d'audit sont append-only.
+
 ## Administration Filament
 
 Ressources disponibles dans le panneau `/admin` :

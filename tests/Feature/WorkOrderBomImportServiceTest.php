@@ -15,6 +15,7 @@ use App\Services\BomImportStorageService;
 use App\Services\WorkOrderAuditService;
 use App\Services\WorkOrderBomImportService;
 use App\Services\WorkOrderItemService;
+use App\Services\WorkOrderQualityPlanService;
 use App\Services\WorkOrderService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -305,7 +306,7 @@ CSV);
         $workOrder = WorkOrder::factory()->create();
         [$file] = $this->csv("P-13;Poteau;IPE 200;S235JR;6000;2;22,4;Débit;\n");
 
-        $throwingItems = new class(app(WorkOrderService::class), app(WorkOrderAuditService::class)) extends WorkOrderItemService
+        $throwingItems = new class(app(WorkOrderService::class), app(WorkOrderAuditService::class), app(WorkOrderQualityPlanService::class)) extends WorkOrderItemService
         {
             public function create(WorkOrder $workOrder, array $data, ?User $actor = null): WorkOrderItem
             {

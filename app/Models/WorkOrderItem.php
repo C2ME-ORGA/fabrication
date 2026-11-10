@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 #[Fillable([
@@ -73,6 +74,16 @@ class WorkOrderItem extends Model
     public function workOrder(): BelongsTo
     {
         return $this->belongsTo(WorkOrder::class);
+    }
+
+    /**
+     * Résultats qualité rattachés à ce repère.
+     *
+     * @return HasMany<QualityControlResult, $this>
+     */
+    public function qualityResults(): HasMany
+    {
+        return $this->hasMany(QualityControlResult::class);
     }
 
     /**

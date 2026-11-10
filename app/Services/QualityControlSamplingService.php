@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\DTO\SamplingPlan;
 use App\Enums\QualityControlSamplingMode;
 use App\Enums\QualityRequirementScope;
 use Illuminate\Validation\ValidationException;
@@ -100,5 +101,93 @@ class QualityControlSamplingService
             QualityControlSamplingMode::EveryN => 'Une pièce sur '.(int) $samplingEvery,
             QualityControlSamplingMode::Fixed => 'Nombre fixé de pièces : '.(int) $requiredResults,
         };
+    }
+
+    /**
+     * Construit le plan d'échantillonnage figé d'un contrôle généré.
+     *
+     * La sélection `every_n` est déterministe : les repères sont triés par
+     * identifiant croissant et un repère sur N est retenu (indices 0, N,
+     * 2N…). La sélection existante est préservée lors d'un recalcul afin
+     * qu'une consultation ou un ajout ultérieur ne change jamais les repères
+     * déjà prévus.
+     *
+     * @param  array<int, int|string>  $itemIds  Repères de l'OF, triés par id.
+     * @param  array<int, int|string>  $preserve  Sélection déjà persistée.
+     */
+    public function plan(
+        QualityControlSamplingMode $mode,
+        ?int $samplingEvery,
+        int $configuredRequiredResults,
+        array $itemIds,
+        bool $itemScoped,
+        array $preserve = [],
+    ): SamplingPlan {
+        $itemIds = array_values(array_unique(array_map(
+            fn (mixed $id): int => (int) $id,
+            $itemIds,
+        )));
+        sort($itemIds);
+
+        $applicableItems = $itemScoped ? count($itemIds) : 1;
+        $requiredResults = $this->computeRequiredResults(
+            $mode,
+            $samplingEvery,
+            $configuredRequiredResults,
+            $applicableItems,
+        );
+
+        if (! $itemScoped) {
+            return new SamplingPlan($mode, $samplingEvery, $requiredResults, $applicableItems, []);
+        }
+
+        if ($mode === QualityControlSamplingMode::Fixed) {
+            // En mode fixed, l'opérateur choisit les pièces ; le nombre attendu
+            // est celui du modèle et doit seulement porter sur des repères
+            // distincts.
+            return new SamplingPlan($mode, $samplingEvery, $requiredResults, $applicableItems, []);
+        }
+
+        $preserved = array_values(array_intersect(
+            array_map(fn (mixed $id): int => (int) $id, $preserve),
+            $itemIds,
+        ));
+
+        if ($mode === QualityControlSamplingMode::All) {
+            return new SamplingPlan($mode, $samplingEvery, $requiredResults, $applicableItems, $itemIds);
+        }
+
+        $step = max(2, (int) $samplingEvery);
+
+        if ($preserved === []) {
+            $selected = [];
+
+            foreach ($itemIds as $index => $itemId) {
+                if ($index % $step === 0) {
+                    $selected[] = $itemId;
+                }
+            }
+
+            return new SamplingPlan($mode, $samplingEvery, $requiredResults, $applicableItems, $selected);
+        }
+
+        $selected = $preserved;
+
+        // Un ajout de repère peut augmenter le nombre attendu. On complète la
+        // sélection existante par les plus petits identifiants non retenus :
+        // la sélection d'origine n'est jamais remise en cause.
+        foreach ($itemIds as $itemId) {
+            if (count($selected) >= $requiredResults) {
+                break;
+            }
+
+            if (! in_array($itemId, $selected, true)) {
+                $selected[] = $itemId;
+            }
+        }
+
+        sort($selected);
+
+        return new SamplingPlan($mode, $samplingEvery, $requiredResults, $applicableItems, $selected);
     }
 }

@@ -29,6 +29,18 @@ class QualityControlTemplateVersionFactory extends Factory
         ];
     }
 
+    public function configure(): static
+    {
+        return $this->afterCreating(function (QualityControlTemplateVersion $version): void {
+            if ($version->status === QualityControlTemplateVersionStatus::Active
+                && $version->active_template_id === null) {
+                $version->forceFill([
+                    'active_template_id' => $version->quality_control_template_id,
+                ])->saveQuietly();
+            }
+        });
+    }
+
     public function active(): static
     {
         return $this->state(fn (): array => [

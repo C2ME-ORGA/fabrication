@@ -27,6 +27,9 @@ class WorkshopSupervision extends Page
     /** @var array<string, mixed> */
     public array $supervision = [];
 
+    /** @var array<string, mixed> */
+    public array $quality = [];
+
     public static function canAccess(): bool
     {
         return auth()->user()?->canManageOperationTimes() === true;
@@ -49,6 +52,7 @@ class WorkshopSupervision extends Page
             ->all();
 
         $this->summary = $service->summary();
+        $this->quality = $service->qualitySupervision();
         $this->supervision = [
             'blocked_operations' => $data['blocked_operations'],
             'overdue_operations' => $data['overdue_operations'],

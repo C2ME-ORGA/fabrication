@@ -13,13 +13,13 @@ return new class extends Migration
 
             // L'exigence appartient à une opération de gamme modèle.
             $table->foreignId('workshop_routing_operation_id')
-                ->constrained('workshop_routing_operations')
+                ->constrained('workshop_routing_operations', 'id', 'routing_quality_op_foreign')
                 ->cascadeOnDelete();
 
             // Un modèle référencé par une gamme ne peut pas être supprimé :
             // il doit être désactivé (même logique que les gammes).
             $table->foreignId('quality_control_template_id')
-                ->constrained('quality_control_templates')
+                ->constrained('quality_control_templates', 'id', 'routing_quality_template_foreign')
                 ->restrictOnDelete();
 
             // operation : constat process ; item : contrôle par repère ;

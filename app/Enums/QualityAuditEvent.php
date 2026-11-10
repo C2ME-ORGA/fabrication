@@ -31,6 +31,8 @@ enum QualityAuditEvent: string implements HasLabel
     case ControlGenerated = 'control_generated';
     case ControlAddedManually = 'control_added_manually';
     case ControlCancelled = 'control_cancelled';
+    case ControlDeleted = 'control_deleted';
+    case ControlRequired = 'control_required';
     case SamplingPlanRecalculated = 'sampling_plan_recalculated';
     case ResultRecorded = 'result_recorded';
     case ResultValidated = 'result_validated';
@@ -40,18 +42,26 @@ enum QualityAuditEvent: string implements HasLabel
 
     // Non-conformités (lot 4)
     case NonConformityCreated = 'non_conformity_created';
+    case NonConformityQualified = 'non_conformity_qualified';
+    case NonConformitySeverityChanged = 'non_conformity_severity_changed';
     case NonConformityAssigned = 'non_conformity_assigned';
     case NonConformityStatusChanged = 'non_conformity_status_changed';
     case NonConformityClosed = 'non_conformity_closed';
     case NonConformityReopened = 'non_conformity_reopened';
+    case NonConformityEvidenceAdded = 'non_conformity_evidence_added';
     case CorrectiveActionAdded = 'corrective_action_added';
+    case CorrectiveActionStatusChanged = 'corrective_action_status_changed';
     case CorrectiveActionCompleted = 'corrective_action_completed';
     case CorrectiveActionIneffective = 'corrective_action_ineffective';
     case VerificationRecorded = 'verification_recorded';
     case SeverityPolicyApplied = 'severity_policy_applied';
 
     // Dérogations (lot 5)
+    case DeviationRequested = 'deviation_requested';
+    case DeviationApproved = 'deviation_approved';
+    case DeviationRejected = 'deviation_rejected';
     case DeviationGranted = 'deviation_granted';
+    case DeviationEvidenceAdded = 'deviation_evidence_added';
     case DeviationRevoked = 'deviation_revoked';
     case DeviationExpired = 'deviation_expired';
 
@@ -79,6 +89,8 @@ enum QualityAuditEvent: string implements HasLabel
             self::ControlGenerated => 'Génération d\'un contrôle',
             self::ControlAddedManually => 'Ajout manuel d\'un contrôle',
             self::ControlCancelled => 'Annulation d\'un contrôle',
+            self::ControlDeleted => 'Suppression d\'un contrôle',
+            self::ControlRequired => 'Contrôle devenu exigible',
             self::SamplingPlanRecalculated => 'Recalcul du plan d\'échantillonnage',
             self::ResultRecorded => 'Saisie d\'un résultat',
             self::ResultValidated => 'Validation d\'un résultat',
@@ -86,16 +98,24 @@ enum QualityAuditEvent: string implements HasLabel
             self::ResultSuperseded => 'Remplacement d\'un résultat',
             self::ControlStatusChanged => 'Changement de statut d\'un contrôle',
             self::NonConformityCreated => 'Création d\'une non-conformité',
+            self::NonConformityQualified => 'Qualification d\'une non-conformité',
+            self::NonConformitySeverityChanged => 'Changement de gravité d\'une non-conformité',
             self::NonConformityAssigned => 'Affectation d\'une non-conformité',
             self::NonConformityStatusChanged => 'Changement de statut d\'une non-conformité',
             self::NonConformityClosed => 'Clôture d\'une non-conformité',
             self::NonConformityReopened => 'Réouverture d\'une non-conformité',
+            self::NonConformityEvidenceAdded => 'Ajout d\'une preuve de non-conformité',
             self::CorrectiveActionAdded => 'Ajout d\'une action corrective',
+            self::CorrectiveActionStatusChanged => 'Changement de statut d\'une action corrective',
             self::CorrectiveActionCompleted => 'Terminaison d\'une action corrective',
             self::CorrectiveActionIneffective => 'Action corrective inefficace',
             self::VerificationRecorded => 'Enregistrement d\'une vérification',
             self::SeverityPolicyApplied => 'Application de la politique de gravité',
             self::DeviationGranted => 'Octroi d\'une dérogation',
+            self::DeviationRequested => 'Demande de dérogation',
+            self::DeviationApproved => 'Approbation d\'une dérogation',
+            self::DeviationRejected => 'Refus d\'une dérogation',
+            self::DeviationEvidenceAdded => 'Ajout d\'une preuve de dérogation',
             self::DeviationRevoked => 'Révocation d\'une dérogation',
             self::DeviationExpired => 'Expiration d\'une dérogation',
             self::ClosureEvaluated => 'Évaluation de l\'éligibilité à la clôture',

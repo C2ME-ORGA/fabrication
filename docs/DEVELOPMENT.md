@@ -89,6 +89,48 @@ vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/OperationTimerConcurrencyT
 vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/WorkOrderOperationConcurrencyTest.php
 ```
 
+## Module qualité — FC-7
+
+Le fonctionnement du référentiel, des contrôles d'OF, des non-conformités, des dérogations et du verrou de clôture est documenté dans [QUALITY.md](QUALITY.md).
+
+Tests ciblés :
+
+```powershell
+php artisan test --filter=Quality
+php artisan test --filter=NonConformity
+php artisan test --filter=WorkshopQuality
+```
+
+Suite complète locale (les tests d'upload peuvent dépasser la limite PHP de 128 Mo) :
+
+```powershell
+php -d memory_limit=512M vendor/bin/phpunit
+```
+
+Tests de concurrence MySQL ciblés (base `fab_c2me_test` uniquement) :
+
+```powershell
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/QualityControlConcurrencyTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/NonConformityConcurrencyTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/QualityDeviationConcurrencyTest.php
+```
+
+Contrôles finaux de non-régression :
+
+```powershell
+php artisan test tests/Feature/WorkOrderClosureTest.php
+php artisan test tests/Feature/DatabaseSchemaTest.php
+php artisan test tests/Feature/FilamentAuthorizationTest.php
+php artisan test --filter=Document
+php artisan test --filter=Workshop
+```
+
+Jeu de démonstration idempotent :
+
+```powershell
+php artisan db:seed --class=QualityDemoSeeder
+```
+
 ## Conventions
 - Toute mutation métier importante passe par une action/service testable.
 - Les transitions d'OF sont contrôlées côté serveur et couvertes par des tests.

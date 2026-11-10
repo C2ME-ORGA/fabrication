@@ -76,6 +76,8 @@ class NonConformityService
                 $this->fail('work_order', 'Cet ordre de fabrication n\'existe plus.');
             }
 
+            $this->authorizeWorkOrderAccess($workOrder, $actor);
+
             // Le verrou sur le résultat sérialise les déclarations concurrentes.
             $lockedResult = QualityControlResult::query()
                 ->whereKey($result->getKey())
@@ -146,6 +148,8 @@ class NonConformityService
             if ($workOrder === null) {
                 $this->fail('work_order', 'Cet ordre de fabrication n\'existe plus.');
             }
+
+            $this->authorizeWorkOrderAccess($workOrder, $actor);
 
             $lockedControl = WorkOrderQualityControl::query()
                 ->whereKey($control->getKey())

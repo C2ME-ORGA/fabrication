@@ -174,6 +174,72 @@ class NonConformityServiceTest extends TestCase
         $this->assertDatabaseCount('non_conformities', 0);
     }
 
+    public function test_a_non_conformity_from_a_result_is_refused_on_an_out_of_scope_work_order(): void
+    {
+        [$workOrder, , , $result] = $this->nonConformingResult();
+
+        $workOrder->forceFill([
+            'status' => WorkOrderStatus::Completed,
+            'actual_end_at' => now(),
+        ])->save();
+
+        try {
+            $this->service->createFromResult($result->fresh(), [
+                'description' => 'Tentative de NC depuis un résultat d\'OF gelé.',
+                'severity' => NonConformitySeverity::Minor->value,
+                'category' => NonConformityCategory::Other->value,
+            ], $this->operator);
+
+            $this->fail('Un opérateur ne doit pas déclarer de NC depuis un résultat d\'OF gelé.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('work_order', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('non_conformities', 0);
+    }
+
+    public function test_a_non_conformity_from_a_control_is_refused_on_an_out_of_scope_work_order(): void
+    {
+        [$workOrder, $control] = $this->nonConformingResult(validate: true);
+
+        $workOrder->forceFill([
+            'status' => WorkOrderStatus::Completed,
+            'actual_end_at' => now(),
+        ])->save();
+
+        try {
+            $this->service->createFromControl($control->fresh(), [
+                'description' => 'Tentative de NC depuis un contrôle d\'OF gelé.',
+                'severity' => NonConformitySeverity::Minor->value,
+                'category' => NonConformityCategory::Other->value,
+            ], $this->operator);
+
+            $this->fail('Un opérateur ne doit pas déclarer de NC depuis un contrôle d\'OF gelé.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('work_order', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('non_conformities', 0);
+    }
+
+    public function test_a_quality_manager_can_create_a_non_conformity_from_a_result_on_a_frozen_work_order(): void
+    {
+        [$workOrder, , , $result] = $this->nonConformingResult();
+
+        $workOrder->forceFill([
+            'status' => WorkOrderStatus::Completed,
+            'actual_end_at' => now(),
+        ])->save();
+
+        $nonConformity = $this->service->createFromResult($result->fresh(), [
+            'description' => 'NC déclarée après clôture par le responsable qualité.',
+            'severity' => NonConformitySeverity::Minor->value,
+            'category' => NonConformityCategory::Other->value,
+        ], $this->qualityManager);
+
+        $this->assertSame($workOrder->getKey(), $nonConformity->work_order_id);
+    }
+
     public function test_assignment_and_qualification_are_traced_and_update_the_policy(): void
     {
         $nonConformity = NonConformity::factory()->severity(NonConformitySeverity::Minor)->create([

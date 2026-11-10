@@ -33,6 +33,20 @@ class NonConformityPolicyTest extends TestCase
         $this->assertFalse($operator->can('close', $nonConformity));
     }
 
+    public function test_an_operator_can_view_a_non_conformity_of_an_active_work_order_even_when_not_declarer_or_responsible(): void
+    {
+        $operator = User::factory()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
+        $nonConformity = NonConformity::factory()->create([
+            'work_order_id' => $workOrder->getKey(),
+            'detected_by' => User::factory()->create()->getKey(),
+            'created_by' => User::factory()->create()->getKey(),
+            'responsible_id' => User::factory()->create()->getKey(),
+        ]);
+
+        $this->assertTrue($operator->can('view', $nonConformity));
+    }
+
     public function test_a_supervisor_can_manage_and_close_minor_non_conformities_only(): void
     {
         $supervisor = User::factory()->workshopSupervisor()->create();

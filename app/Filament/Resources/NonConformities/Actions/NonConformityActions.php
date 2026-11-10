@@ -70,8 +70,16 @@ class NonConformityActions
             ->schema([
                 Select::make('responsible_id')
                     ->label('Responsable')
-                    ->options(fn (): array => User::query()->orderBy('name')->pluck('name', 'id')->all())
                     ->searchable()
+                    ->getSearchResultsUsing(fn (string $search): array => User::query()
+                        ->where('name', 'like', '%'.$search.'%')
+                        ->orderBy('name')
+                        ->limit(50)
+                        ->pluck('name', 'id')
+                        ->all())
+                    ->getOptionLabelUsing(fn (int|string|null $value): ?string => $value === null
+                        ? null
+                        : User::query()->whereKey($value)->value('name'))
                     ->native(false),
                 DatePicker::make('due_date')
                     ->label('Échéance'),

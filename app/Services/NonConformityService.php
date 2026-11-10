@@ -195,6 +195,8 @@ class NonConformityService
                 $this->fail('work_order', 'Cet ordre de fabrication n\'existe plus.');
             }
 
+            $this->authorizeWorkOrderAccess($lockedWorkOrder, $actor);
+
             $operationId = isset($data['work_order_operation_id']) && $data['work_order_operation_id'] !== ''
                 ? (int) $data['work_order_operation_id']
                 : null;
@@ -642,6 +644,16 @@ class NonConformityService
     {
         if (! $this->gate->forUser($actor)->allows('create', NonConformity::class)) {
             $this->fail('non_conformity', 'Vous n\'êtes pas autorisé à déclarer une non-conformité.');
+        }
+    }
+
+    protected function authorizeWorkOrderAccess(WorkOrder $workOrder, User $actor): void
+    {
+        if (! $workOrder->isAccessibleBy($actor)) {
+            $this->fail(
+                'work_order',
+                'Cet ordre de fabrication n\'est pas accessible avec vos habilitations.',
+            );
         }
     }
 

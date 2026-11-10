@@ -5,7 +5,6 @@ namespace App\Filament\Resources\NonConformities\Tables;
 use App\Enums\NonConformitySeverity;
 use App\Enums\NonConformityStatus;
 use App\Models\NonConformity;
-use App\Models\User;
 use App\Models\WorkOrder;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -83,7 +82,7 @@ class NonConformitiesTable
                     ->options(NonConformityStatus::options()),
                 SelectFilter::make('responsible_id')
                     ->label('Responsable')
-                    ->options(fn (): array => User::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->relationship('responsible', 'name')
                     ->searchable(),
                 Filter::make('detected_period')
                     ->label('Période de déclaration')

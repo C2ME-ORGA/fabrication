@@ -6,6 +6,7 @@ use App\Enums\NonConformityCategory;
 use App\Enums\NonConformityOrigin;
 use App\Enums\NonConformitySeverity;
 use App\Enums\NonConformityStatus;
+use App\Enums\WorkOrderStatus;
 use App\Models\NonConformity;
 use App\Models\QualityAuditLog;
 use App\Models\QualityControlResult;
@@ -136,7 +137,7 @@ class NonConformityServiceTest extends TestCase
 
     public function test_a_manual_non_conformity_can_be_attached_to_an_operation_and_an_item(): void
     {
-        $workOrder = WorkOrder::factory()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
         $item = WorkOrderItem::factory()->forWorkOrder($workOrder)->create();
         $operation = WorkOrderOperation::factory()->forWorkOrder($workOrder)->create();
 
@@ -152,6 +153,25 @@ class NonConformityServiceTest extends TestCase
         $this->assertSame($item->getKey(), $nonConformity->work_order_item_id);
         $this->assertSame(NonConformityOrigin::Item, $nonConformity->origin);
         $this->assertSame($workOrder->number, $nonConformity->work_order_number);
+    }
+
+    public function test_a_manual_non_conformity_is_refused_on_an_out_of_scope_work_order_even_on_direct_service_call(): void
+    {
+        $completed = WorkOrder::factory()->completed()->create();
+
+        try {
+            $this->service->createManual($completed, [
+                'description' => 'Tentative de NC sur un OF hors périmètre.',
+                'severity' => NonConformitySeverity::Minor->value,
+                'category' => NonConformityCategory::Other->value,
+            ], $this->operator);
+
+            $this->fail('Un opérateur ne doit pas déclarer de NC sur un OF gelé.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('work_order', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('non_conformities', 0);
     }
 
     public function test_assignment_and_qualification_are_traced_and_update_the_policy(): void
@@ -348,7 +368,7 @@ class NonConformityServiceTest extends TestCase
 
     public function test_non_conformity_references_are_sequential_and_unique(): void
     {
-        $workOrder = WorkOrder::factory()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
         $payload = [
             'description' => 'Non-conformité de référencement séquentiel.',
             'severity' => NonConformitySeverity::Minor->value,

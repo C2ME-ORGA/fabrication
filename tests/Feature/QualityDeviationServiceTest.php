@@ -139,6 +139,25 @@ class QualityDeviationServiceTest extends TestCase
         ], $this->qualityManager);
     }
 
+    public function test_a_global_work_order_deviation_scope_is_rejected(): void
+    {
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
+
+        try {
+            $this->service->request($workOrder, [
+                'scope' => QualityDeviationScope::WorkOrder->value,
+                'work_order_quality_control_id' => 999999,
+                'reason' => 'Une dérogation globale au niveau de l\'OF doit être refusée.',
+            ], $this->qualityManager);
+
+            $this->fail('Une dérogation globale OF ne doit pas être acceptée.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('scope', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('quality_deviations', 0);
+    }
+
     public function test_a_deviation_reason_shorter_than_twenty_characters_is_refused(): void
     {
         [$workOrder, $control] = $this->deviableControl();

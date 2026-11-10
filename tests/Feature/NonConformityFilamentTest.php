@@ -7,6 +7,7 @@ use App\Enums\NonConformitySeverity;
 use App\Enums\NonConformityStatus;
 use App\Enums\WorkOrderStatus;
 use App\Filament\Resources\NonConformities\Pages\CreateNonConformity;
+use App\Filament\Resources\NonConformities\Pages\ListNonConformities;
 use App\Filament\Resources\NonConformities\Pages\ViewNonConformity;
 use App\Filament\Resources\WorkOrders\Pages\ViewWorkOrder;
 use App\Filament\Resources\WorkOrders\RelationManagers\QualityControlsRelationManager;
@@ -65,6 +66,84 @@ class NonConformityFilamentTest extends TestCase
             'created_by' => $admin->getKey(),
             'severity' => 'minor',
         ]);
+    }
+
+    public function test_an_operator_can_declare_a_manual_non_conformity_on_an_active_work_order(): void
+    {
+        $operator = User::factory()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
+
+        $this->actingAs($operator);
+
+        Livewire::test(CreateNonConformity::class)
+            ->fillForm([
+                'work_order_id' => $workOrder->getKey(),
+                'description' => 'Défaut constaté par un opérateur sur un OF en exécution.',
+                'severity' => NonConformitySeverity::Minor->value,
+                'category' => NonConformityCategory::Visual->value,
+                'detected_at' => now()->format('Y-m-d H:i:s'),
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('non_conformities', [
+            'work_order_id' => $workOrder->getKey(),
+            'created_by' => $operator->getKey(),
+        ]);
+    }
+
+    public function test_an_operator_cannot_declare_a_manual_non_conformity_on_a_frozen_work_order(): void
+    {
+        $operator = User::factory()->create();
+        $completed = WorkOrder::factory()->completed()->create();
+
+        $this->actingAs($operator);
+
+        Livewire::test(CreateNonConformity::class)
+            ->fillForm([
+                'work_order_id' => $completed->getKey(),
+                'description' => 'Tentative de NC sur un OF hors périmètre.',
+                'severity' => NonConformitySeverity::Minor->value,
+                'category' => NonConformityCategory::Other->value,
+                'detected_at' => now()->format('Y-m-d H:i:s'),
+            ])
+            ->call('create')
+            ->assertHasFormErrors(['work_order_id']);
+
+        $this->assertDatabaseMissing('non_conformities', [
+            'work_order_id' => $completed->getKey(),
+        ]);
+    }
+
+    public function test_an_admin_can_assign_a_non_conformity_with_a_remotely_searched_responsible(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $responsible = User::factory()->create();
+        $nonConformity = NonConformity::factory()->create();
+
+        $this->actingAs($admin);
+
+        Livewire::test(ViewNonConformity::class, ['record' => $nonConformity->getRouteKey()])
+            ->callAction('assignNonConformity', data: ['responsible_id' => $responsible->getKey()])
+            ->assertNotified('Affectation enregistrée');
+
+        $this->assertSame($responsible->getKey(), $nonConformity->fresh()->responsible_id);
+    }
+
+    public function test_the_responsible_filter_only_returns_matching_non_conformities(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $firstResponsible = User::factory()->create();
+        $secondResponsible = User::factory()->create();
+        $first = NonConformity::factory()->create(['responsible_id' => $firstResponsible->getKey()]);
+        $second = NonConformity::factory()->create(['responsible_id' => $secondResponsible->getKey()]);
+
+        $this->actingAs($admin);
+
+        Livewire::test(ListNonConformities::class)
+            ->filterTable('responsible_id', $firstResponsible->getKey())
+            ->assertCanSeeTableRecords([$first])
+            ->assertCanNotSeeTableRecords([$second]);
     }
 
     public function test_an_admin_can_start_a_non_conformity_from_the_view_page(): void

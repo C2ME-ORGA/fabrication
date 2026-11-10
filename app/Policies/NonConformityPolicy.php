@@ -32,11 +32,7 @@ class NonConformityPolicy
             return $user->canManageNonConformities();
         }
 
-        if ($workOrder->allowsOperationExecution()) {
-            return true;
-        }
-
-        return $user->canViewQualityHistory();
+        return $workOrder->isAccessibleBy($user);
     }
 
     public function create(User $user): bool

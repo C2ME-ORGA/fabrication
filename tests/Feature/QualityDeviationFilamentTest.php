@@ -69,6 +69,29 @@ class QualityDeviationFilamentTest extends TestCase
         ]);
     }
 
+    public function test_a_quality_manager_cannot_request_a_deviation_on_a_frozen_work_order(): void
+    {
+        $qualityManager = User::factory()->qualityManager()->create();
+        $completed = WorkOrder::factory()->completed()->create();
+        [$control] = $this->createControl($completed, [], ['allow_deviation' => true]);
+
+        $this->actingAs($qualityManager);
+
+        Livewire::test(CreateQualityDeviation::class)
+            ->fillForm([
+                'work_order_id' => $completed->getKey(),
+                'scope' => QualityDeviationScope::Control->value,
+                'work_order_quality_control_id' => $control->getKey(),
+                'reason' => 'Tentative de dérogation sur un OF hors périmètre.',
+            ])
+            ->call('create')
+            ->assertHasFormErrors(['work_order_id']);
+
+        $this->assertDatabaseMissing('quality_deviations', [
+            'work_order_id' => $completed->getKey(),
+        ]);
+    }
+
     public function test_a_quality_manager_can_approve_a_deviation_from_the_view_page(): void
     {
         $admin = User::factory()->admin()->create();

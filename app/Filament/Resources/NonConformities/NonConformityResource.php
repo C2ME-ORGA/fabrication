@@ -55,14 +55,9 @@ class NonConformityResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery()->with([
-            'workOrder',
-            'responsible',
-            'operation',
-            'item',
-            'control',
-            'result',
-        ]);
+        // Le tableau et la recherche globale n'utilisent que responsible ;
+        // les relations de la fiche détaillée sont chargées par ViewNonConformity.
+        $query = parent::getEloquentQuery()->with('responsible');
 
         $user = auth()->user();
 

@@ -148,6 +148,18 @@ class WorkOrder extends Model
     }
 
     /**
+     * Périmètre de consultation et d'intervention qualité sur l'OF.
+     *
+     * Les OF en exécution sont accessibles à tout utilisateur authentifié ;
+     * les OF gelés restent réservés aux profils qualité. Cette règle reprend
+     * celle appliquée par les Policies des NC et des contrôles qualité.
+     */
+    public function isAccessibleBy(User $user): bool
+    {
+        return $this->allowsOperationExecution() || $user->canViewQualityHistory();
+    }
+
+    /**
      * Frozen document references captured at release and re-review time.
      *
      * @return HasMany<WorkOrderDocumentSnapshot, $this>

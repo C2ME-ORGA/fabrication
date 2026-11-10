@@ -25,6 +25,7 @@ class WorkOrderOperationService
         protected OperationDependencyService $dependencies,
         protected WorkOrderOperationAuditService $audit,
         protected OperationTimerService $timers,
+        protected WorkOrderQualityPlanService $qualityPlan,
     ) {}
 
     public function start(WorkOrderOperation $operation, User $actor): WorkOrderOperation
@@ -202,6 +203,8 @@ class WorkOrderOperationService
                 WorkshopOperationAuditEvent::Completed,
                 $actor,
             );
+
+            $this->qualityPlan->markControlsRequiredOnOperationCompletion($completed, $actor);
 
             $this->dependencies->propagateAfterCompletion($completed, $actor);
 

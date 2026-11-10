@@ -3,8 +3,12 @@
 namespace App\Filament\Resources\WorkOrders\Schemas;
 
 use App\Filament\Resources\Jobs\JobResource;
+use App\Models\NonConformity;
+use App\Models\QualityDeviation;
 use App\Models\WorkOrder;
+use App\Models\WorkOrderQualityControl;
 use App\Services\DocumentApplicabilityService;
+use App\Services\QualityClosureEligibilityService;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Html;
 use Filament\Schemas\Components\Section;
@@ -87,6 +91,29 @@ class WorkOrderInfolist
                             ->label('Créé le')
                             ->dateTime('d/m/Y H:i'),
                     ]),
+                Section::make('Éligibilité qualité')
+                    ->description('Contrôles obligatoires, non-conformités et dérogations influençant la libération ou la clôture.')
+                    ->schema([
+                        Html::make(function (WorkOrder $record): string {
+                            $eligibility = app(QualityClosureEligibilityService::class)->evaluate($record);
+
+                            return view('filament.work-orders.quality-eligibility', [
+                                'workOrder' => $record,
+                                'eligibility' => $eligibility,
+                                'controls' => WorkOrderQualityControl::query()
+                                    ->whereKey($eligibility->controlIds)
+                                    ->get(),
+                                'nonConformities' => NonConformity::query()
+                                    ->whereKey($eligibility->nonConformityIds)
+                                    ->get(),
+                                'deviations' => QualityDeviation::query()
+                                    ->whereKey($eligibility->deviationIds)
+                                    ->get(),
+                            ])->render();
+                        }),
+                    ])
+                    ->columnSpanFull(),
+
                 Section::make('Documents techniques')
                     ->description('Versions approuvées applicables, références figées à la libération et remises en revue explicites.')
                     ->schema([

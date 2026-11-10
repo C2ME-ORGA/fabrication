@@ -148,6 +148,18 @@ class WorkOrder extends Model
     }
 
     /**
+     * Périmètre de consultation et d'intervention qualité sur l'OF.
+     *
+     * Les OF en exécution sont accessibles à tout utilisateur authentifié ;
+     * les OF gelés restent réservés aux profils qualité. Cette règle reprend
+     * celle appliquée par les Policies des NC et des contrôles qualité.
+     */
+    public function isAccessibleBy(User $user): bool
+    {
+        return $this->allowsOperationExecution() || $user->canViewQualityHistory();
+    }
+
+    /**
      * Frozen document references captured at release and re-review time.
      *
      * @return HasMany<WorkOrderDocumentSnapshot, $this>
@@ -175,6 +187,48 @@ class WorkOrder extends Model
     public function operationAuditLogs(): HasMany
     {
         return $this->hasMany(WorkOrderOperationAuditLog::class)->latest('created_at');
+    }
+
+    /**
+     * Plan qualité généré pour cet ordre de fabrication.
+     *
+     * @return HasMany<WorkOrderQualityControl, $this>
+     */
+    public function qualityControls(): HasMany
+    {
+        return $this->hasMany(WorkOrderQualityControl::class)
+            ->orderBy('position')
+            ->orderBy('id');
+    }
+
+    /**
+     * Résultats qualité enregistrés sur cet ordre de fabrication.
+     *
+     * @return HasMany<QualityControlResult, $this>
+     */
+    public function qualityResults(): HasMany
+    {
+        return $this->hasMany(QualityControlResult::class);
+    }
+
+    /**
+     * Non-conformités rattachées à cet ordre de fabrication.
+     *
+     * @return HasMany<NonConformity, $this>
+     */
+    public function nonConformities(): HasMany
+    {
+        return $this->hasMany(NonConformity::class)->latest('id');
+    }
+
+    /**
+     * Dérogations qualité rattachées à cet ordre de fabrication.
+     *
+     * @return HasMany<QualityDeviation, $this>
+     */
+    public function qualityDeviations(): HasMany
+    {
+        return $this->hasMany(QualityDeviation::class)->latest('id');
     }
 
     /**

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Opération d'une gamme atelier modèle.
@@ -77,5 +78,18 @@ class WorkshopRoutingOperation extends Model
             'depends_on_operation_id',
             'workshop_routing_operation_id',
         )->withTimestamps();
+    }
+
+    /**
+     * Exigences qualité portées par cette opération.
+     *
+     * @return HasMany<WorkshopRoutingOperationQualityRequirement, $this>
+     */
+    public function qualityRequirements(): HasMany
+    {
+        return $this->hasMany(
+            WorkshopRoutingOperationQualityRequirement::class,
+            'workshop_routing_operation_id',
+        )->orderBy('position')->orderBy('id');
     }
 }

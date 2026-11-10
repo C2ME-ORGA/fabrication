@@ -71,6 +71,23 @@ class WorkshopRouting extends Model
     }
 
     /**
+     * Exigences qualité portées par les opérations de cette gamme.
+     *
+     * @return HasManyThrough<WorkshopRoutingOperationQualityRequirement, WorkshopRoutingOperation, $this>
+     */
+    public function qualityRequirements(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            WorkshopRoutingOperationQualityRequirement::class,
+            WorkshopRoutingOperation::class,
+            'workshop_routing_id',
+            'workshop_routing_operation_id',
+            'id',
+            'id',
+        );
+    }
+
+    /**
      * La gamme a-t-elle déjà servi à générer des opérations d'OF ?
      */
     public function hasGeneratedOperations(): bool

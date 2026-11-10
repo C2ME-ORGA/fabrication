@@ -72,6 +72,8 @@ vendor/bin/phpunit -c phpunit.mysql.xml
 ```
 
 La suite MySQL vérifie le verrouillage de la ligne `documents` pendant la création concurrente de versions.
+La suite de test ne doit pas être executer completement à chaque ajout, modification ou suppression de test.
+L'execution de la suite de test complete relève des CI de github. Seul les tests des ajouts, modifications ou suppression doivent être executer.
 
 ## Module atelier — FC-6
 
@@ -85,6 +87,48 @@ php artisan test --filter=Operation
 php artisan test --filter=Timing
 vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/OperationTimerConcurrencyTest.php
 vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/WorkOrderOperationConcurrencyTest.php
+```
+
+## Module qualité — FC-7
+
+Le fonctionnement du référentiel, des contrôles d'OF, des non-conformités, des dérogations et du verrou de clôture est documenté dans [QUALITY.md](QUALITY.md).
+
+Tests ciblés :
+
+```powershell
+php artisan test --filter=Quality
+php artisan test --filter=NonConformity
+php artisan test --filter=WorkshopQuality
+```
+
+Suite complète locale (les tests d'upload peuvent dépasser la limite PHP de 128 Mo) :
+
+```powershell
+php -d memory_limit=512M vendor/bin/phpunit
+```
+
+Tests de concurrence MySQL ciblés (base `fab_c2me_test` uniquement) :
+
+```powershell
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/QualityControlConcurrencyTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/NonConformityConcurrencyTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/QualityDeviationConcurrencyTest.php
+```
+
+Contrôles finaux de non-régression :
+
+```powershell
+php artisan test tests/Feature/WorkOrderClosureTest.php
+php artisan test tests/Feature/DatabaseSchemaTest.php
+php artisan test tests/Feature/FilamentAuthorizationTest.php
+php artisan test --filter=Document
+php artisan test --filter=Workshop
+```
+
+Jeu de démonstration idempotent :
+
+```powershell
+php artisan db:seed --class=QualityDemoSeeder
 ```
 
 ## Conventions

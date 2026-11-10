@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\WorkOrder;
 use App\Models\WorkOrderOperation;
 use App\Models\WorkOrderOperationAuditLog;
+use App\Models\WorkOrderQualityControl;
 use App\Models\WorkshopRouting;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Arr;
@@ -32,6 +33,7 @@ class WorkOrderRoutingService
         protected WorkOrderService $workOrders,
         protected WorkshopRoutingValidationService $routingValidation,
         protected WorkOrderOperationAuditService $audit,
+        protected QualityControlPlanGenerationService $qualityPlan,
     ) {}
 
     /**
@@ -201,6 +203,7 @@ class WorkOrderRoutingService
             }
 
             $this->assertOperationHasNoExecutionHistory($lockedOperation);
+            $this->assertOperationHasNoQualityHistory($lockedOperation);
 
             $this->audit->record(
                 $lockedOperation,
@@ -270,6 +273,7 @@ class WorkOrderRoutingService
 
             if ($oldOperations->isNotEmpty()) {
                 $this->assertOperationsCanBeReplaced($oldOperations);
+                $this->assertQualityControlsCanBeReplaced($oldOperations);
 
                 $this->audit->record(
                     null,
@@ -287,6 +291,8 @@ class WorkOrderRoutingService
                     ],
                 );
 
+                $this->deleteReplacedQualityControls($oldOperations);
+
                 foreach ($oldOperations as $oldOperation) {
                     $oldOperation->delete();
                 }
@@ -297,6 +303,8 @@ class WorkOrderRoutingService
 
             $generated = $this->generateOperations($lockedWorkOrder, $lockedRouting, $actor);
             $this->assertGenerationIntegrity($lockedWorkOrder, $lockedRouting, $generated);
+
+            $qualityControls = $this->qualityPlan->generateForWorkOrder($lockedWorkOrder, $actor);
 
             $this->audit->record(
                 null,
@@ -315,6 +323,8 @@ class WorkOrderRoutingService
                     'previous_routing_code' => $previousRoutingCode,
                     'generated_operations' => $generated->count(),
                     'generated_operation_ids' => $generated->pluck('id')->all(),
+                    'generated_quality_controls' => $qualityControls->count(),
+                    'generated_quality_control_ids' => $qualityControls->pluck('id')->all(),
                     'deleted_operations' => $oldOperations->count(),
                 ],
             );
@@ -532,6 +542,65 @@ class WorkOrderRoutingService
             ->whereNotIn('event', [WorkshopOperationAuditEvent::Created->value])
             ->exists()) {
             $this->fail('operation', 'Cette opération possède un historique métier et ne peut pas être supprimée.');
+        }
+    }
+
+    /**
+     * Une opération portant un contrôle qualité non annulé ou des résultats
+     * ne peut pas être supprimée. Les contrôles annulés sans résultat sont
+     * nettoyés avec l'opération.
+     */
+    protected function assertOperationHasNoQualityHistory(WorkOrderOperation $operation): void
+    {
+        $controls = $operation->qualityControls()->orderBy('id')->get();
+
+        $hasBlockingControl = $controls->contains(
+            fn (WorkOrderQualityControl $control): bool => $control->status->value !== 'cancelled'
+                || $control->hasResults(),
+        );
+
+        if ($hasBlockingControl) {
+            $this->fail(
+                'operation',
+                'Cette opération porte des contrôles qualité ou des résultats et ne peut pas être supprimée.',
+            );
+        }
+
+        foreach ($controls as $control) {
+            $control->delete();
+        }
+    }
+
+    /**
+     * @param  Collection<int, WorkOrderOperation>  $operations
+     */
+    protected function assertQualityControlsCanBeReplaced(Collection $operations): void
+    {
+        $hasResults = WorkOrderQualityControl::query()
+            ->whereIn('work_order_operation_id', $operations->pluck('id')->all())
+            ->whereHas('results')
+            ->exists();
+
+        if ($hasResults) {
+            $this->fail(
+                'routing',
+                'Des contrôles qualité portent déjà des résultats. La gamme ne peut pas être remplacée.',
+            );
+        }
+    }
+
+    /**
+     * @param  Collection<int, WorkOrderOperation>  $operations
+     */
+    protected function deleteReplacedQualityControls(Collection $operations): void
+    {
+        $controls = WorkOrderQualityControl::query()
+            ->whereIn('work_order_operation_id', $operations->pluck('id')->all())
+            ->orderBy('id')
+            ->get();
+
+        foreach ($controls as $control) {
+            $control->delete();
         }
     }
 

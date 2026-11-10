@@ -21,5 +21,9 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        if (app()->environment(['local', 'testing'])) {
+            $this->call(QualityDemoSeeder::class);
+        }
     }
 }

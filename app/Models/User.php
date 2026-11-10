@@ -30,6 +30,7 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'is_workshop_supervisor' => 'boolean',
+            'is_quality_manager' => 'boolean',
         ];
     }
 
@@ -75,5 +76,112 @@ class User extends Authenticatable implements FilamentUser
     public function canManageOperationTimes(): bool
     {
         return $this->isAdmin() || $this->isWorkshopSupervisor();
+    }
+
+    /**
+     * Responsable qualité : gère le référentiel, valide les contrôles et
+     * accorde les dérogations. Ce drapeau n'accorde aucun accès admin.
+     * Il n'est pas mass assignable : il doit être positionné explicitement.
+     */
+    public function isQualityManager(): bool
+    {
+        return (bool) $this->is_quality_manager;
+    }
+
+    public function canManageQualityTemplates(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    /**
+     * Les exigences qualité d'une gamme sont gérées par le responsable
+     * atelier (catalogue), le responsable qualité et l'administrateur.
+     */
+    public function canManageQualityRequirements(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    /**
+     * Tout utilisateur authentifié peut réaliser un contrôle sur un OF en
+     * exécution ou en phase qualité. Le service vérifie ensuite l'état de
+     * l'OF et du contrôle.
+     */
+    public function canRecordQualityControls(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Validation des résultats : responsable atelier, responsable qualité et
+     * administrateur. La ségrégation (contrôleur, rang, criticité) est
+     * appliquée dans le service, pas dans cette méthode.
+     */
+    public function canValidateQualityControls(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canValidateCriticalQualityControls(): bool
+    {
+        return $this->canValidateQualityControls();
+    }
+
+    /**
+     * Consultation de l'historique qualité d'un OF clôturé ou annulé.
+     */
+    public function canViewQualityHistory(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canReportNonConformity(): bool
+    {
+        return true;
+    }
+
+    public function canManageNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canCloseMinorNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
+    }
+
+    public function canCloseMajorNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canReopenNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canVerifyNonConformities(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canGrantQualityDeviations(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canApproveQualityDeviations(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canRevokeQualityDeviations(): bool
+    {
+        return $this->isAdmin() || $this->isQualityManager();
+    }
+
+    public function canViewQualityEligibility(): bool
+    {
+        return $this->isAdmin() || $this->isWorkshopSupervisor() || $this->isQualityManager();
     }
 }

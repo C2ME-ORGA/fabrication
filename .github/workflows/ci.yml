@@ -72,3 +72,141 @@ jobs:
 
       - name: Compile frontend assets (production build)
         run: npm run build
+
+  mysql:
+    name: Tests MySQL 8.4
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root_test
+          MYSQL_DATABASE: fab_c2me_test
+          MYSQL_USER: fabrication
+          MYSQL_PASSWORD: fabrication_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -proot_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # Base de test dédiée, cohérente avec phpunit.mysql.xml.
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: fab_c2me_test
+      DB_USERNAME: fabrication
+      DB_PASSWORD: fabrication_test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_mysql, pdo_sqlite, gd, fileinfo, exif
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Create .env from example
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate --force
+
+      - name: Wait for MySQL
+        run: |
+          php -r '
+          $deadline = time() + 90;
+          do {
+              try {
+                  $pdo = new PDO(
+                      sprintf("mysql:host=%s;port=%s;dbname=%s", getenv("DB_HOST"), getenv("DB_PORT"), getenv("DB_DATABASE")),
+                      getenv("DB_USERNAME"),
+                      getenv("DB_PASSWORD"),
+                  );
+                  break;
+              } catch (Throwable $exception) {
+                  if (time() >= $deadline) {
+                      throw $exception;
+                  }
+                  sleep(2);
+              }
+          } while (true);
+          echo "MySQL ", $pdo->query("select version()")->fetchColumn(), PHP_EOL;
+          '
+
+      - name: Verify Laravel and PHPUnit use MySQL
+        run: |
+          php -r '
+          require "vendor/autoload.php";
+          $app = require "bootstrap/app.php";
+          $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+          $connection = Illuminate\Support\Facades\DB::connection();
+
+          if ($connection->getDriverName() !== "mysql") {
+              fwrite(STDERR, "Moteur inattendu : ".$connection->getDriverName().PHP_EOL);
+              exit(1);
+          }
+
+          echo "Moteur : ", $connection->getDriverName(), PHP_EOL;
+          echo "Base    : ", $connection->getDatabaseName(), PHP_EOL;
+          echo "Version : ", $connection->selectOne("select version() as version")->version, PHP_EOL;
+          '
+
+      - name: Run migrations on MySQL
+        run: php artisan migrate:fresh --force
+
+      # Sélection critique FC-8 : la suite complète reste exécutée sur SQLite.
+      # Deux tests FC-7 préexistants ne sont pas portables sur MySQL (IDs
+      # inter-tables et ordre des clés JSON) ; ils sont documentés dans
+      # docs/FC-8-DELIVERY-CHECKLIST.md et hors périmètre de cette PR.
+      - name: Execute FC-8 critical test suite on MySQL
+        run: |
+          vendor/bin/phpunit -c phpunit.mysql.xml \
+            tests/Feature/Fc8IntegrationTest.php \
+            tests/Feature/Fc8SecurityTest.php \
+            tests/Feature/GeneratedDocumentStorageServiceTest.php \
+            tests/Feature/GeneratedDocumentOrphanCommandTest.php \
+            tests/Feature/DocumentDownloadTest.php \
+            tests/Feature/DocumentVersionTest.php \
+            tests/Feature/DocumentSnapshotTest.php \
+            tests/Feature/WorkOrderPdfGenerationTest.php \
+            tests/Feature/WorkOrderPdfFilamentTest.php \
+            tests/Feature/WorkOrderPdfConcurrencyTest.php \
+            tests/Feature/WorkOrderQualityReleaseTest.php \
+            tests/Feature/WorkOrderQualityReleaseFilamentTest.php \
+            tests/Feature/WorkOrderQualityLifecycleTest.php \
+            tests/Feature/WorkOrderClosureTest.php \
+            tests/Feature/WorkOrderTest.php \
+            tests/Feature/ShipmentPreparationTest.php \
+            tests/Feature/ShipmentPackagingAvailabilityTest.php \
+            tests/Feature/ShipmentValidationTest.php \
+            tests/Feature/ShipmentShippingTest.php \
+            tests/Feature/ShipmentCancelledWorkOrderTest.php \
+            tests/Feature/ShipmentDocumentReviewTest.php \
+            tests/Feature/ShipmentFilamentTest.php \
+            tests/Feature/ShipmentConcurrencyTest.php \
+            tests/Feature/FilamentAuthorizationTest.php \
+            tests/Feature/QualitySecurityTest.php \
+            tests/Feature/DatabaseSchemaTest.php

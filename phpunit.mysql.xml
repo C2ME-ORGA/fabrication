@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    Suite MySQL/MariaDB dédiée à la vérification du verrouillage concurrent
-    des compteurs d'OF et des documents. La base cible doit être une base de test séparée
-    (fab_c2me_test), jamais la base de développement.
+    Suite MySQL dédiée à la vérification du verrouillage concurrent des
+    compteurs d'OF et des documents, et à la sélection critique FC-8 exécutée
+    par le job CI `mysql` (service mysql:8.4).
+
+    La base cible doit être une base de test séparée (fab_c2me_test), jamais
+    la base de développement ou de production. Les identifiants sont lus dans
+    l'environnement (DB_USERNAME / DB_PASSWORD).
 
     Création préalable :
         CREATE DATABASE fab_c2me_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

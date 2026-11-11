@@ -33,13 +33,33 @@ class QualityClosureEligibilityService
 
     public const PHASE_CLOSURE = 'closure';
 
+    /**
+     * Revue explicite d'un OF déjà figé (terminé) afin de produire une preuve
+     * de libération qualité sans réactiver l'OF.
+     */
+    public const PHASE_HISTORICAL_REVIEW = 'historical_review';
+
+    /**
+     * Réévaluation qualité au moment de la validation d'une expédition.
+     * Même matrice que la clôture, sans le court-circuit `isLocked()`.
+     */
+    public const PHASE_SHIPMENT = 'shipment';
+
     public function __construct(
         protected QualityDeviationService $deviations,
         protected QualityControlEvaluationService $evaluation,
     ) {}
 
-    public function evaluate(WorkOrder $workOrder, string $phase = self::PHASE_CLOSURE): ClosureEligibility
+    public function evaluateForShipment(WorkOrder $workOrder): ClosureEligibility
     {
+        return $this->evaluate($workOrder, self::PHASE_SHIPMENT, ignoreLocked: true);
+    }
+
+    public function evaluate(
+        WorkOrder $workOrder,
+        string $phase = self::PHASE_CLOSURE,
+        bool $ignoreLocked = false,
+    ): ClosureEligibility {
         $this->deviations->expireOverdueForWorkOrder($workOrder);
 
         $workOrder = WorkOrder::query()->find($workOrder->getKey()) ?? $workOrder;
@@ -50,7 +70,7 @@ class QualityClosureEligibilityService
         $nonConformityIds = [];
         $deviationIds = [];
 
-        if ($workOrder->isLocked()) {
+        if ($workOrder->isLocked() && ! $ignoreLocked) {
             return new ClosureEligibility(
                 eligible: true,
                 blockers: [],
@@ -309,6 +329,37 @@ class QualityClosureEligibilityService
         }
 
         return true;
+    }
+
+    /**
+     * Indique si l'OF portait au moins une exigence qualité obligatoire.
+     *
+     * Utilisé pour renseigner `requirements_present` dans la preuve : un OF
+     * sans exigence reste éligible (compatibilité FC-6/FC-7), mais la preuve
+     * doit le dire explicitement.
+     */
+    public function hasMandatoryRequirements(WorkOrder $workOrder): bool
+    {
+        if (WorkOrderQualityControl::query()
+            ->where('work_order_id', $workOrder->getKey())
+            ->where('is_mandatory', true)
+            ->exists()) {
+            return true;
+        }
+
+        $sourceOperationIds = $workOrder->operations()
+            ->whereNotNull('source_routing_operation_id')
+            ->pluck('source_routing_operation_id')
+            ->all();
+
+        if ($sourceOperationIds === []) {
+            return false;
+        }
+
+        return WorkshopRoutingOperationQualityRequirement::query()
+            ->whereIn('workshop_routing_operation_id', $sourceOperationIds)
+            ->where('is_mandatory', true)
+            ->exists();
     }
 
     /**

@@ -75,6 +75,33 @@ La suite MySQL vérifie le verrouillage de la ligne `documents` pendant la créa
 La suite de test ne doit pas être executer completement à chaque ajout, modification ou suppression de test.
 L'execution de la suite de test complete relève des CI de github. Seul les tests des ajouts, modifications ou suppression doivent être executer.
 
+## Module FC-8 — PDF, expéditions et livraison
+
+Le fonctionnement des PDF d'OF, de la preuve de libération qualité, des expéditions, du colisage, de la validation, du départ, de l'annulation et du workflow documentaire P7 est documenté dans [FC-8-OPERATIONS.md](FC-8-OPERATIONS.md). La préparation d'une livraison est décrite dans [FC-8-DELIVERY-CHECKLIST.md](FC-8-DELIVERY-CHECKLIST.md).
+
+Points d'exploitation essentiels :
+
+- PDF générés et BL/listes de colisage : disque privé `generated_documents` (`storage/app/private/generated-documents`) ;
+- journal JSONL des refus : disque privé `shipment_audit` (`storage/app/private/shipment-audit`) ;
+- documents techniques : disque privé `documents` (`storage/app/private/documents`) ;
+- les trois disques doivent être sauvegardés et restaurés avec la base.
+
+Commandes ciblées :
+
+```powershell
+php artisan generated-documents:find-orphans
+php artisan test tests/Feature/Fc8IntegrationTest.php tests/Feature/Fc8SecurityTest.php
+php artisan test tests/Feature/ShipmentValidationTest.php tests/Feature/ShipmentShippingTest.php
+php artisan test tests/Feature/ShipmentDocumentReviewTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/ShipmentConcurrencyTest.php
+```
+
+Compatibilité de production : PHP 8.4, minimum réel 8.4.1. La version 8.4.27 est utilisée pour les vérifications locales :
+
+```powershell
+& 'C:\Users\maxim\.config\herd\bin\php84\php.exe' artisan test <suites ciblées>
+```
+
 ## Module atelier — FC-6
 
 Le fonctionnement des gammes, de la génération des opérations d'OF, du moteur d'exécution, du chronométrage et de la supervision est documenté dans [WORKSHOP.md](WORKSHOP.md).

@@ -5,11 +5,13 @@ namespace App\Providers\Filament;
 use App\Filament\Resources\NonConformities\NonConformityResource;
 use App\Filament\Resources\QualityControlTemplates\QualityControlTemplateResource;
 use App\Filament\Resources\QualityControlTemplateVersions\QualityControlTemplateVersionResource;
+use App\Filament\Resources\Shipments\ShipmentResource;
 use App\Filament\Resources\WorkshopRoutings\WorkshopRoutingResource;
 use App\Filament\Workshop\Pages\WorkshopDashboard;
 use App\Filament\Workshop\Pages\WorkshopSupervision;
 use App\Filament\Workshop\Resources\QualityControls\QualityControlResource;
 use App\Filament\Workshop\Resources\WorkshopOperations\WorkshopOperationResource;
+use App\Http\Controllers\DocumentDownloadController;
 use App\Http\Controllers\NonConformityAttachmentDownloadController;
 use App\Http\Controllers\QualityControlResultAttachmentDownloadController;
 use App\Http\Controllers\QualityDeviationAttachmentDownloadController;
@@ -55,12 +57,16 @@ class WorkshopPanelProvider extends PanelProvider
                 QualityControlTemplateResource::class,
                 QualityControlTemplateVersionResource::class,
                 NonConformityResource::class,
+                ShipmentResource::class,
             ])
             ->pages([
                 WorkshopDashboard::class,
                 WorkshopSupervision::class,
             ])
             ->authenticatedRoutes(function (): void {
+                Route::get('/quality/documents/versions/{version}/download', DocumentDownloadController::class)
+                    ->name('quality.documents.versions.download');
+
                 Route::get('/quality/result-attachments/{attachment}/download', QualityControlResultAttachmentDownloadController::class)
                     ->name('quality.result-attachments.download');
 

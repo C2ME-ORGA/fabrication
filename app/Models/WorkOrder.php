@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\GeneratedDocumentStatus;
+use App\Enums\GeneratedDocumentType;
 use App\Enums\WorkOrderPriority;
 use App\Enums\WorkOrderStatus;
 use Database\Factories\WorkOrderFactory;
@@ -167,6 +169,69 @@ class WorkOrder extends Model
     public function documentSnapshots(): HasMany
     {
         return $this->hasMany(WorkOrderDocumentSnapshot::class)->latest('captured_at');
+    }
+
+    /**
+     * PDF générés et archivés pour cet OF.
+     *
+     * @return HasMany<GeneratedDocument, $this>
+     */
+    public function generatedDocuments(): HasMany
+    {
+        return $this->hasMany(GeneratedDocument::class)->latest('generated_at')->latest('id');
+    }
+
+    /**
+     * Dernier PDF d'OF archivé, s'il existe.
+     */
+    public function latestGeneratedDocument(): ?GeneratedDocument
+    {
+        return $this->generatedDocuments()
+            ->where('type', GeneratedDocumentType::WorkOrderPdf->value)
+            ->where('status', GeneratedDocumentStatus::Archived->value)
+            ->first();
+    }
+
+    /**
+     * Expéditions de cet OF.
+     *
+     * @return HasMany<Shipment, $this>
+     */
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class)->latest('created_at')->latest('id');
+    }
+
+    /**
+     * Preuves de libération qualité, de la plus récente à la plus ancienne.
+     *
+     * @return HasMany<WorkOrderQualityRelease, $this>
+     */
+    public function qualityReleases(): HasMany
+    {
+        return $this->hasMany(WorkOrderQualityRelease::class)
+            ->latest('released_at')
+            ->latest('id');
+    }
+
+    /**
+     * Dernière preuve de libération qualité, si elle existe.
+     */
+    public function latestQualityRelease(): ?WorkOrderQualityRelease
+    {
+        return $this->qualityReleases()->first();
+    }
+
+    /**
+     * Décisions P7 de revue documentaire pour cet OF.
+     *
+     * @return HasMany<ShipmentDocumentReview, $this>
+     */
+    public function documentReviews(): HasMany
+    {
+        return $this->hasMany(ShipmentDocumentReview::class)
+            ->latest('decided_at')
+            ->latest('id');
     }
 
     /**

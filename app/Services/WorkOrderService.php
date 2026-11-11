@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\DTO\ClosureEligibility;
 use App\Enums\JobStatus;
 use App\Enums\NonConformityStatus;
 use App\Enums\QualityAuditEvent;
@@ -40,6 +41,7 @@ class WorkOrderService
         protected WorkOrderAuditService $auditLog,
         protected QualityClosureEligibilityService $qualityClosure,
         protected QualityAuditService $qualityAudit,
+        protected WorkOrderQualityReleaseService $qualityReleases,
     ) {}
 
     /**
@@ -291,6 +293,13 @@ class WorkOrderService
                         $qualityBlocked,
                     );
 
+                    // Preuve persistée de libération qualité, recalculée et
+                    // écrite dans la même transaction que la clôture (BR-Q-02).
+                    $this->qualityReleases->recordForClosure(
+                        $locked,
+                        $actor ?? Auth::user(),
+                    );
+
                     $locked->actual_end_at ??= now();
                 }
 
@@ -371,7 +380,7 @@ class WorkOrderService
         WorkOrderStatus $to,
         ?User $actor,
         ?array &$qualityBlocked,
-    ): void {
+    ): ClosureEligibility {
         $eligibility = $this->qualityClosure->evaluate($workOrder, $phase);
 
         if (! $eligibility->eligible) {
@@ -398,6 +407,8 @@ class WorkOrderService
             null,
             ['phase' => $phase, 'eligibility' => $eligibility->toArray()],
         );
+
+        return $eligibility;
     }
 
     protected function auditCancellationWithOpenQualityIssues(WorkOrder $workOrder, ?User $actor): void

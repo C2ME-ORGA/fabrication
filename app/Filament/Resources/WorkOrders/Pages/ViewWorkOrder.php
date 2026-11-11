@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\WorkOrders\Pages;
 
 use App\Filament\Resources\WorkOrders\Actions\WorkOrderDocumentActions;
+use App\Filament\Resources\WorkOrders\Actions\WorkOrderPrintActions;
+use App\Filament\Resources\WorkOrders\Actions\WorkOrderQualityReleaseActions;
 use App\Filament\Resources\WorkOrders\WorkOrderResource;
 use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
@@ -15,6 +17,8 @@ class ViewWorkOrder extends ViewRecord
     {
         return [
             EditAction::make(),
+            WorkOrderPrintActions::generatePdf(),
+            WorkOrderQualityReleaseActions::historicalRelease(),
             WorkOrderDocumentActions::reReviewDocuments(),
         ];
     }

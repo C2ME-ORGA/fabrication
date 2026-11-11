@@ -77,6 +77,53 @@ class WorkOrderPolicy
     }
 
     /**
+     * Génération du PDF d'OF : réservée aux profils habilités du périmètre
+     * initial. Le responsable atelier ne peut pas générer de document.
+     */
+    public function generatePdf(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->isAdmin();
+    }
+
+    /**
+     * Consultation et téléchargement du PDF archivé.
+     *
+     * Le responsable atelier et le responsable qualité y accèdent si l'OF
+     * leur est accessible. Cette capacité ne donne aucun droit d'écriture.
+     */
+    public function viewPdf(User $user, WorkOrder $workOrder): bool
+    {
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        if (! $user->isWorkshopSupervisor() && ! $user->isQualityManager()) {
+            return false;
+        }
+
+        return $workOrder->isAccessibleBy($user);
+    }
+
+    /**
+     * Libération qualité : preuve persistée réservée aux profils habilités
+     * à gérer la qualité. Le responsable atelier ne crée pas cette preuve.
+     */
+    public function releaseQuality(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->isAdmin() || $user->isQualityManager();
+    }
+
+    /**
+     * Décision P7 sur une révision documentaire : responsable qualité
+     * uniquement. L'administrateur et le responsable atelier ne décident pas
+     * à sa place.
+     */
+    public function decideDocumentReview(User $user, WorkOrder $workOrder): bool
+    {
+        return $user->isQualityManager();
+    }
+
+    /**
      * Gestion de la nomenclature : création, import et actions de masse.
      * Les règles fines par pièce sont dans WorkOrderItemPolicy.
      */

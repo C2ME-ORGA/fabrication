@@ -154,6 +154,12 @@ La phase `release` contrôle l'intégrité du plan. La phase `closure` contrôle
 
 Le verrou est appliqué dans `WorkOrderService::transitionTo()`, pas seulement dans Filament. Un OF annulé ou verrouillé reste consultable sans blocage qualité.
 
+### 8.1 Preuve de libération FC-8
+
+Depuis FC-8, la clôture enregistre une preuve dédiée `work_order_quality_releases` dans la même transaction que le passage à `completed`. Une revue historique explicite peut créer une preuve pour un OF terminé sans preuve, après réévaluation FC-7.
+
+La preuve est append-only, contient l'instantané d'éligibilité et son hash, et alimente le visa Qualité du PDF d'OF. Aucune preuve n'est reconstituée depuis un simple événement d'audit. Le détail d'exploitation est dans [FC-8-OPERATIONS.md](FC-8-OPERATIONS.md).
+
 ## 9. Audit et immuabilité
 
 Les événements sont écrits dans `quality_audit_logs` :

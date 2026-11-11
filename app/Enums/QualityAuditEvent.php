@@ -68,6 +68,7 @@ enum QualityAuditEvent: string implements HasLabel
     // Clôture (lot 5)
     case ClosureEvaluated = 'closure_evaluated';
     case ClosureBlocked = 'closure_blocked';
+    case QualityReleaseRecorded = 'quality_release_recorded';
     case WorkOrderCancelledWithOpenQualityIssues = 'work_order_cancelled_with_open_quality_issues';
 
     public function getLabel(): string
@@ -120,6 +121,7 @@ enum QualityAuditEvent: string implements HasLabel
             self::DeviationExpired => 'Expiration d\'une dérogation',
             self::ClosureEvaluated => 'Évaluation de l\'éligibilité à la clôture',
             self::ClosureBlocked => 'Clôture bloquée pour motif qualité',
+            self::QualityReleaseRecorded => 'Preuve de libération qualité enregistrée',
             self::WorkOrderCancelledWithOpenQualityIssues => 'Annulation avec non-conformités ouvertes',
         };
     }

@@ -13,6 +13,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Html;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Joaopaulolndev\FilamentPdfViewer\Infolists\Components\PdfViewerEntry;
 
 class WorkOrderInfolist
 {
@@ -126,6 +127,35 @@ class WorkOrderInfolist
                                 'snapshots' => $applicability->snapshotsWithImpact($record),
                                 'releaseSnapshots' => $applicability->releaseSnapshotsFor($record),
                             ])->render();
+                        }),
+                    ])
+                    ->columnSpanFull(),
+
+                Section::make('PDF généré')
+                    ->description('Dernière génération archivée. Le fichier est servi par une route authentifiée ; aucun chemin privé n’est exposé.')
+                    ->schema([
+                        PdfViewerEntry::make('generated_pdf')
+                            ->label('PDF archivé')
+                            ->minHeight('70svh')
+                            ->fileUrl(fn (WorkOrder $record): ?string => ($document = $record->latestGeneratedDocument())
+                                ? route('generated-documents.view', $document)
+                                : null)
+                            ->visible(fn (WorkOrder $record): bool => $record->latestGeneratedDocument() !== null),
+                        Html::make(function (WorkOrder $record): string {
+                            $document = $record->latestGeneratedDocument();
+
+                            if ($document === null) {
+                                return '<span class="text-sm text-gray-500">Aucun PDF archivé pour cet OF.</span>';
+                            }
+
+                            $viewUrl = e(route('generated-documents.view', $document));
+                            $downloadUrl = e(route('generated-documents.download', $document));
+
+                            return '<div class="flex flex-wrap items-center gap-4 text-sm">'
+                                .'<span>Référence : <strong>'.e($document->reference).'</strong></span>'
+                                .'<a class="text-primary-600 underline" target="_blank" rel="noopener" href="'.$viewUrl.'">Ouvrir</a>'
+                                .'<a class="text-primary-600 underline" href="'.$downloadUrl.'">Télécharger</a>'
+                                .'</div>';
                         }),
                     ])
                     ->columnSpanFull(),

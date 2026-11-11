@@ -21,6 +21,9 @@ class ViewShipment extends ViewRecord
 
     protected function getHeaderActions(): array
     {
+        // Un seul accès au guard pour toutes les actions de la page.
+        $user = auth()->user();
+
         return [
             Action::make('editHeader')
                 ->label('Modifier l\'en-tête')
@@ -34,11 +37,11 @@ class ViewShipment extends ViewRecord
                     'delivery_address',
                     'notes',
                 ]))
-                ->visible(fn (Shipment $record): bool => (bool) auth()->user()?->can('update', $record))
-                ->authorize(fn (Shipment $record): bool => (bool) auth()->user()?->can('update', $record))
-                ->action(function (Shipment $record, array $data): void {
+                ->visible(fn (Shipment $record): bool => (bool) $user?->can('update', $record))
+                ->authorize(fn (Shipment $record): bool => (bool) $user?->can('update', $record))
+                ->action(function (Shipment $record, array $data) use ($user): void {
                     try {
-                        app(ShipmentService::class)->updateHeader($record, $data, auth()->user());
+                        app(ShipmentService::class)->updateHeader($record, $data, $user);
 
                         Notification::make()
                             ->success()
@@ -54,11 +57,11 @@ class ViewShipment extends ViewRecord
                 ->color('success')
                 ->requiresConfirmation()
                 ->modalDescription('La préparation reste modifiable après réouverture. Aucune quantité n’est réservée et l’OF n’est pas clôturé.')
-                ->visible(fn (Shipment $record): bool => (bool) auth()->user()?->can('prepare', $record))
-                ->authorize(fn (Shipment $record): bool => (bool) auth()->user()?->can('prepare', $record))
-                ->action(function (Shipment $record): void {
+                ->visible(fn (Shipment $record): bool => (bool) $user?->can('prepare', $record))
+                ->authorize(fn (Shipment $record): bool => (bool) $user?->can('prepare', $record))
+                ->action(function (Shipment $record) use ($user): void {
                     try {
-                        app(ShipmentService::class)->prepare($record, auth()->user());
+                        app(ShipmentService::class)->prepare($record, $user);
 
                         Notification::make()
                             ->success()
@@ -76,11 +79,11 @@ class ViewShipment extends ViewRecord
                 ->modalHeading('Valider définitivement l’expédition')
                 ->modalDescription('La validation contrôle la qualité, les documents, les quantités et le colisage complet. Elle réserve les quantités et génère le BL et la liste de colisage. L’opération est irréversible hors annulation contrôlée.')
                 ->visible(fn (Shipment $record): bool => $record->canBeValidated()
-                    && (bool) auth()->user()?->can('validate', $record))
-                ->authorize(fn (Shipment $record): bool => (bool) auth()->user()?->can('validate', $record))
-                ->action(function (Shipment $record): void {
+                    && (bool) $user?->can('validate', $record))
+                ->authorize(fn (Shipment $record): bool => (bool) $user?->can('validate', $record))
+                ->action(function (Shipment $record) use ($user): void {
                     try {
-                        $updated = app(ShipmentValidationService::class)->validate($record, auth()->user());
+                        $updated = app(ShipmentValidationService::class)->validate($record, $user);
                         $this->record = $updated;
 
                         Notification::make()
@@ -105,13 +108,13 @@ class ViewShipment extends ViewRecord
                         ->maxLength(10000)
                         ->rows(3),
                 ])
-                ->visible(fn (Shipment $record): bool => (bool) auth()->user()?->can('ship', $record))
-                ->authorize(fn (Shipment $record): bool => (bool) auth()->user()?->can('ship', $record))
-                ->action(function (Shipment $record, array $data): void {
+                ->visible(fn (Shipment $record): bool => (bool) $user?->can('ship', $record))
+                ->authorize(fn (Shipment $record): bool => (bool) $user?->can('ship', $record))
+                ->action(function (Shipment $record, array $data) use ($user): void {
                     try {
                         $updated = app(ShipmentService::class)->ship(
                             $record,
-                            auth()->user(),
+                            $user,
                             $data['comment'] ?? null,
                         );
                         $this->record = $updated;
@@ -138,13 +141,13 @@ class ViewShipment extends ViewRecord
                         ->minLength(20)
                         ->rows(3),
                 ])
-                ->visible(fn (Shipment $record): bool => (bool) auth()->user()?->can('cancel', $record))
-                ->authorize(fn (Shipment $record): bool => (bool) auth()->user()?->can('cancel', $record))
-                ->action(function (Shipment $record, array $data): void {
+                ->visible(fn (Shipment $record): bool => (bool) $user?->can('cancel', $record))
+                ->authorize(fn (Shipment $record): bool => (bool) $user?->can('cancel', $record))
+                ->action(function (Shipment $record, array $data) use ($user): void {
                     try {
                         $updated = app(ShipmentService::class)->cancel(
                             $record,
-                            auth()->user(),
+                            $user,
                             (string) $data['cancellation_reason'],
                         );
                         $this->record = $updated;
@@ -163,11 +166,11 @@ class ViewShipment extends ViewRecord
                 ->color('warning')
                 ->requiresConfirmation()
                 ->modalDescription('L’expédition repasse en brouillon. La réouverture est tracée dans le journal.')
-                ->visible(fn (Shipment $record): bool => (bool) auth()->user()?->can('reopen', $record))
-                ->authorize(fn (Shipment $record): bool => (bool) auth()->user()?->can('reopen', $record))
-                ->action(function (Shipment $record): void {
+                ->visible(fn (Shipment $record): bool => (bool) $user?->can('reopen', $record))
+                ->authorize(fn (Shipment $record): bool => (bool) $user?->can('reopen', $record))
+                ->action(function (Shipment $record) use ($user): void {
                     try {
-                        app(ShipmentService::class)->reopen($record, auth()->user());
+                        app(ShipmentService::class)->reopen($record, $user);
 
                         Notification::make()
                             ->success()

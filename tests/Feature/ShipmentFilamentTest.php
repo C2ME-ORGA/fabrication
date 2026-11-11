@@ -197,6 +197,29 @@ class ShipmentFilamentTest extends TestCase
         ])->assertCanSeeTableRecords([$package]);
     }
 
+    public function test_quantities_by_mark_section_escapes_line_snapshots(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $workOrder = WorkOrder::factory()->status(WorkOrderStatus::Released)->create();
+        $item = WorkOrderItem::factory()->forWorkOrder($workOrder)->create([
+            'mark' => '<img src=x onerror=alert(1)>',
+            'designation' => '<script>alert("xss")</script>',
+            'quantity_produced' => 5,
+            'quantity_rejected' => 0,
+        ]);
+        $shipment = app(ShipmentService::class)->create($workOrder, $admin);
+        app(ShipmentService::class)->addLine($shipment, $item, 3, $admin);
+
+        $response = $this->actingAs($admin)
+            ->get(ShipmentResource::getUrl('view', ['record' => $shipment]));
+
+        $response->assertOk();
+        $response->assertSee(e($item->mark), false);
+        $response->assertSee(e($item->designation), false);
+        $response->assertDontSee('<img src=x onerror=alert(1)>', false);
+        $response->assertDontSee('<script>alert("xss")</script>', false);
+    }
+
     public function test_admin_can_validate_then_ship_from_the_view_page(): void
     {
         Storage::fake('generated_documents');

@@ -142,37 +142,21 @@ class ShipmentResource extends Resource
                         $rows = $record->lines()
                             ->with('workOrderItem')
                             ->get()
-                            ->map(function (ShipmentLine $line) use ($guard): string {
+                            ->map(function (ShipmentLine $line) use ($guard): array {
                                 $item = $line->workOrderItem;
-                                $accepted = $item === null ? 0 : $guard->acceptedQuantity($item);
-                                $remainingToPrepare = $item === null ? 0 : $guard->remainingToPrepareForItem($item);
 
-                                return '<tr>'
-                                    .'<td>'.e($line->mark_snapshot).'</td>'
-                                    .'<td>'.e($line->designation_snapshot).'</td>'
-                                    .'<td class="text-right">'.$accepted.'</td>'
-                                    .'<td class="text-right">'.$line->quantity_prepared.'</td>'
-                                    .'<td class="text-right">'.$line->packagedQuantity().'</td>'
-                                    .'<td class="text-right">'.$line->remainingToPackage().'</td>'
-                                    .'<td class="text-right">'.$remainingToPrepare.'</td>'
-                                    .'</tr>';
-                            })
-                            ->implode('');
+                                return [
+                                    'mark' => (string) $line->mark_snapshot,
+                                    'designation' => (string) $line->designation_snapshot,
+                                    'accepted' => $item === null ? 0 : $guard->acceptedQuantity($item),
+                                    'prepared' => (int) $line->quantity_prepared,
+                                    'packaged' => $line->packagedQuantity(),
+                                    'remaining_to_package' => $line->remainingToPackage(),
+                                    'remaining_to_prepare' => $item === null ? 0 : $guard->remainingToPrepareForItem($item),
+                                ];
+                            });
 
-                        if ($rows === '') {
-                            return '<span class="text-sm text-gray-500">Aucune ligne de préparation.</span>';
-                        }
-
-                        return '<table class="w-full text-sm">'
-                            .'<thead><tr>'
-                            .'<th class="text-left">Repère</th>'
-                            .'<th class="text-left">Désignation</th>'
-                            .'<th class="text-right">Accepté OF</th>'
-                            .'<th class="text-right">Préparé</th>'
-                            .'<th class="text-right">Colisé</th>'
-                            .'<th class="text-right">Reste à coliser</th>'
-                            .'<th class="text-right">Reste à préparer sur l’OF</th>'
-                            .'</tr></thead><tbody>'.$rows.'</tbody></table>';
+                        return view('filament.shipments.quantities-by-mark', ['rows' => $rows])->render();
                     }),
                 ]),
         ]);

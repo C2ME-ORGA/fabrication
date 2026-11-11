@@ -98,6 +98,11 @@ Les actions sensibles utilisent une confirmation ou un formulaire modal avec com
 - Création de colis et répartition des quantités.
 - La préparation **ne réserve aucune quantité** et ne clôture pas l'OF.
 - Une quantité colisée ne dépasse jamais la quantité préparée de la ligne.
+- Le sélecteur Filament ne propose que les lignes encore colisables. Le calcul
+  `ShipmentQuantityGuard::packageableLines()` exclut le colis en cours de
+  modification, ce qui permet de corriger sa répartition sans rendre la ligne
+  invisible. Le service `ShipmentPackagingService::assign()` reste la source de
+  vérité et refuse tout dépassement même si l'interface est contournée.
 - Une expédition préparée peut être rouverte en brouillon.
 
 ### 2.4 Validation
@@ -159,10 +164,24 @@ Aucun de ces disques n'est servi depuis `public/`. Les téléchargements passent
 ### 3.2 Generated documents
 
 - Chemin généré côté serveur, nom UUID, extension PDF.
-- SHA-256 calculé au moment de l'archivage.
+- SHA-256 calculé au moment de l'archivage à partir du contenu réellement écrit.
 - Version par portée et par type ; une nouvelle génération remplace fonctionnellement l'ancienne sans écraser le fichier.
-- Un document archivé ne peut pas être modifié ni supprimé.
+- Sémantique des statuts : `archived` désigne la version archivée **et courante** ; `superseded` et `cancelled` ne sont plus courantes. `GeneratedDocumentStatus::isCurrent()` retourne donc vrai uniquement pour `archived`.
+- Un document archivé ne peut pas être modifié ni supprimé via Eloquent : les champs de contenu sont protégés par `GeneratedDocument::IMMUTABLE_FIELDS`, et `performDeleteOnModel()` refuse la suppression.
 - Le statut peut évoluer vers `superseded` ou `cancelled`, jamais le contenu.
+- **Portée de l'immuabilité :** la protection est applicative (Eloquent et services). Elle ne remplace pas des permissions filesystem strictes ni un stockage WORM. Un accès direct au disque avec les droits de l'utilisateur applicatif pourrait encore altérer un fichier.
+- **Contrôle d'intégrité :** les téléchargements vérifient l'authentification, la Policy et l'existence du fichier ; un fichier absent renvoie `404`. Le SHA-256 n'est pas revérifié à chaque téléchargement. Pour un contrôle manuel :
+
+```powershell
+# PowerShell : comparer le hash du fichier au champ sha256 de la ligne
+Get-FileHash storage/app/private/generated-documents/<chemin> -Algorithm SHA256
+```
+
+```sql
+SELECT reference, path, sha256 FROM generated_documents WHERE id = ?;
+```
+
+Un écart doit être traité comme une altération ou une restauration incohérente : ne pas régénérer silencieusement un document déjà archivé.
 
 ### 3.3 Journal JSONL des refus
 
@@ -175,7 +194,7 @@ storage/app/private/shipment-audit/validation-refused/refusals.jsonl
 Caractéristiques :
 
 - écriture append-only, `flock(LOCK_EX)`, `fflush`, `fsync` ;
-- une ligne JSON par tentative refusée ;
+- une ligne JSON par tentative refusée ; une écriture partielle est tronquée avant l'erreur pour ne jamais laisser de JSON invalide ;
 - `attempt_id` UUID pour corréler le fichier et le miroir SQL ;
 - métadonnées limitées : expédition, OF, utilisateur, statut, clés d'erreur, classe d'exception ;
 - indépendant de la transaction métier : un rollback, y compris externe, ne l'annule pas ;
@@ -299,17 +318,46 @@ git diff --check
 
 Le rendu désactive les ressources distantes, le PHP embarqué et JavaScript. Les vues Blade sont contrôlées et les polices restent locales.
 
-### 6.3 Base de données
+### 6.3 Base de données et intégration continue
 
 - SQLite en mémoire pour la suite rapide ;
-- MySQL/MariaDB pour les tests de verrouillage et les contrôles de concurrence ;
+- MySQL 8 pour les tests de verrouillage et les contrôles de concurrence ;
 - base de test dédiée `fab_c2me_test`, jamais la base de développement ou de production.
 
 ```powershell
 vendor/bin/phpunit -c phpunit.mysql.xml
 ```
 
+Le workflow `.github/workflows/ci.yml` exécute deux jobs indépendants :
+
+| Job | Moteur | Contenu |
+|---|---|---|
+| `test` | SQLite en mémoire | suite PHPUnit complète, Pint et build Vite |
+| `mysql` | MySQL 8.4 LTS (service `mysql:8.4`) | migrations `migrate:fresh`, sélection critique FC-8 sous MySQL |
+
+Le job MySQL utilise un utilisateur de test non sensible, un healthcheck `mysqladmin ping` et une vérification explicite du moteur avant les migrations. La sélection MySQL couvre les PDF, la preuve qualité, les expéditions, le colisage, la validation, le départ, P7, les documents et les tests de verrouillage.
+
+Deux tests FC-7 préexistants ne sont pas portables sur MySQL (comparaison d'identifiants entre tables différentes et ordre des clés d'un JSON) : ils restent exécutés sur SQLite et sont hors sélection MySQL. Les corriger relève d'une PR FC-7 dédiée.
+
 Les tests MySQL vérifient des verrous de ligne avec une seconde connexion `FOR UPDATE NOWAIT`. **Ils ne constituent pas un test multiprocessus réel.**
+
+Protocole reproductible pour une vérification multiprocessus manuelle
+(non automatisée dans PHPUnit) :
+
+1. Sur une base MySQL de recette, créer un OF avec une quantité acceptée de
+   100 et deux expéditions préparées et intégralement colisées, A = 70 et
+   B = 60. Décider P7 pour les documents applicables.
+2. Ouvrir deux terminaux et lancer simultanément deux scripts PHP indépendants
+   qui appellent `ShipmentValidationService::validate()` sur A et B.
+3. Utiliser une barrière déterministe avant l'appel (fichier sentinelle ou
+   `usleep` identique) pour maximiser le recouvrement.
+4. Vérifier qu'une seule validation réussit. La seconde doit échouer proprement
+   avec une `ValidationException` de quantité, sans réservation partielle.
+5. Contrôler en base que la somme des quantités validées ne dépasse jamais 100
+   et qu'aucune ligne d'expédition n'est restée dans un état intermédiaire.
+
+Cette vérification n'est pas exécutée dans la CI : elle exige deux processus
+réellement concurrents et un environnement MySQL dédié.
 
 ### 6.4 Migrations
 
@@ -324,9 +372,16 @@ Les tests MySQL vérifient des verrous de ligne avec une seconde connexion `FOR 
 php artisan test tests/Feature/Fc8IntegrationTest.php tests/Feature/Fc8SecurityTest.php
 php artisan test tests/Feature/WorkOrderPdfGenerationTest.php tests/Feature/WorkOrderPdfFilamentTest.php
 php artisan test tests/Feature/WorkOrderQualityReleaseTest.php tests/Feature/WorkOrderQualityReleaseFilamentTest.php
-php artisan test tests/Feature/ShipmentPreparationTest.php tests/Feature/ShipmentValidationTest.php tests/Feature/ShipmentShippingTest.php
+php artisan test tests/Feature/ShipmentPreparationTest.php tests/Feature/ShipmentPackagingAvailabilityTest.php
+php artisan test tests/Feature/ShipmentValidationTest.php tests/Feature/ShipmentShippingTest.php
 php artisan test tests/Feature/ShipmentDocumentReviewTest.php tests/Feature/ShipmentFilamentTest.php
 php artisan test tests/Feature/FilamentAuthorizationTest.php tests/Feature/QualitySecurityTest.php
+```
+
+```powershell
+# Sélection MySQL critique, équivalente au job CI
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/ShipmentConcurrencyTest.php
+vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/WorkOrderPdfConcurrencyTest.php
 ```
 
 ---
@@ -343,6 +398,8 @@ php artisan test tests/Feature/FilamentAuthorizationTest.php tests/Feature/Quali
 | Accès global D-6 | Pas de restriction par affectation individuelle | Décision métier validée |
 | Rotation JSONL non automatique | Croissance du fichier | À définir avec la conservation |
 | Vérification de hash des PDF non outillée | Contrôle manuel | Amélioration future |
+| Suite PHPUnit complète non exécutée sous MySQL | Deux tests FC-7 préexistants non portables ; la sélection FC-8 est exécutée | Dette FC-7 documentée |
+| Immuabilité PDF applicative | Un accès filesystem direct reste possible | À compléter par permissions/stockage immuable |
 
 ---
 

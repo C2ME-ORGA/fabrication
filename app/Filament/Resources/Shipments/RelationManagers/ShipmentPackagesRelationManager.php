@@ -8,6 +8,7 @@ use App\Models\ShipmentLine;
 use App\Models\ShipmentPackage;
 use App\Models\ShipmentPackageLine;
 use App\Services\ShipmentPackagingService;
+use App\Services\ShipmentQuantityGuard;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -234,12 +235,26 @@ class ShipmentPackagesRelationManager extends RelationManager
      */
     protected function lineOptions(ShipmentPackage $package): array
     {
-        return $package->shipment
-            ->lines()
-            ->get()
-            ->mapWithKeys(fn (ShipmentLine $line): array => [
-                $line->getKey() => "{$line->mark_snapshot} — préparé {$line->quantity_prepared}, reste ".$line->remainingToPackage(),
-            ])
+        $guard = app(ShipmentQuantityGuard::class);
+
+        // Le colis en cours est exclu du calcul : sa répartition actuelle
+        // sera remplacée, elle ne doit donc pas masquer la ligne. Une ligne
+        // entièrement colisée dans d'autres colis n'est plus proposée.
+        return $guard->packageableLines($package->shipment, $package)
+            ->mapWithKeys(function (ShipmentLine $line) use ($guard, $package): array {
+                $available = $guard->remainingToPackageForLine($line, $package);
+                $current = $package->packageLines()
+                    ->where('shipment_line_id', $line->getKey())
+                    ->value('quantity');
+
+                $label = "{$line->mark_snapshot} — préparé {$line->quantity_prepared}, disponible {$available}";
+
+                if ($current !== null) {
+                    $label .= " (dans ce colis : {$current})";
+                }
+
+                return [$line->getKey() => $label];
+            })
             ->all();
     }
 

@@ -202,10 +202,9 @@ class ShipmentPackagingService
                 ->where('shipment_line_id', $lockedLine->getKey())
                 ->first();
 
-            $otherAllocated = (int) ShipmentPackageLine::query()
-                ->where('shipment_line_id', $lockedLine->getKey())
-                ->when($existing !== null, fn ($query) => $query->where('id', '!=', $existing->getKey()))
-                ->sum('quantity');
+            // La répartition éventuellement déjà présente dans ce colis est
+            // exclue : elle sera remplacée par la nouvelle quantité.
+            $otherAllocated = $this->quantities->packagedForLine($lockedLine, $lockedPackage);
 
             if ($otherAllocated + $quantity > $lockedLine->quantity_prepared) {
                 throw ValidationException::withMessages([

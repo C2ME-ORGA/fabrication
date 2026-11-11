@@ -40,6 +40,30 @@ class DatabaseSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumn('work_order_document_snapshots', 'reason'));
     }
 
+    public function test_mysql_tables_use_the_innodb_engine(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped('Le moteur InnoDB ne se vérifie que sur MySQL.');
+        }
+
+        $tables = DB::select(
+            'select table_name as name, engine as engine
+             from information_schema.tables
+             where table_schema = database() and table_type = ?',
+            ['BASE TABLE'],
+        );
+
+        $this->assertNotEmpty($tables);
+
+        foreach ($tables as $table) {
+            $this->assertSame(
+                'InnoDB',
+                (string) $table->engine,
+                "La table {$table->name} n'utilise pas InnoDB.",
+            );
+        }
+    }
+
     public function test_work_order_status_and_priority_default_to_draft_and_normal(): void
     {
         $job = Job::factory()->create();

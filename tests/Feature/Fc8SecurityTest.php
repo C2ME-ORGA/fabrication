@@ -208,6 +208,40 @@ class Fc8SecurityTest extends TestCase
         $document->delete();
     }
 
+    public function test_archived_generated_document_content_cannot_be_modified(): void
+    {
+        [, , $shipment] = $this->validationReadyShipment(5, 3);
+        app(ShipmentValidationService::class)->validate($shipment, $this->admin);
+
+        $document = GeneratedDocument::query()
+            ->where('shipment_id', $shipment->getKey())
+            ->firstOrFail();
+
+        $this->expectException(RuntimeException::class);
+
+        $document->forceFill(['sha256' => str_repeat('0', 64)])->save();
+    }
+
+    public function test_missing_generated_document_file_returns_not_found(): void
+    {
+        [, , $shipment] = $this->validationReadyShipment(5, 3);
+        app(ShipmentValidationService::class)->validate($shipment, $this->admin);
+
+        $document = GeneratedDocument::query()
+            ->where('shipment_id', $shipment->getKey())
+            ->firstOrFail();
+
+        Storage::disk('generated_documents')->delete($document->path);
+
+        $this->actingAs($this->admin)
+            ->get(route('generated-documents.view', $document))
+            ->assertNotFound();
+
+        $this->actingAs($this->admin)
+            ->get(route('generated-documents.download', $document))
+            ->assertNotFound();
+    }
+
     public function test_operator_cannot_execute_shipment_services_directly(): void
     {
         $operator = User::factory()->create();

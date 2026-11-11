@@ -127,8 +127,17 @@ class ShipmentValidationRefusalRecorder
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
             ).PHP_EOL;
 
-            if (fwrite($stream, $line) === false) {
-                throw new RuntimeException('Impossible d’écrire dans le journal des refus de validation.');
+            // En cas d'écriture partielle, tronquer la ligne incomplète pour
+            // ne jamais laisser un JSON invalide dans un journal append-only.
+            $position = ftell($stream);
+            $written = fwrite($stream, $line);
+
+            if ($position === false || $written === false || $written !== strlen($line)) {
+                if ($position !== false) {
+                    ftruncate($stream, $position);
+                }
+
+                throw new RuntimeException('Impossible d’écrire une ligne complète dans le journal des refus de validation.');
             }
 
             fflush($stream);

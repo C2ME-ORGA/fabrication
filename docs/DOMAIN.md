@@ -299,6 +299,18 @@ Règles transverses à retenir :
 - une dérogation ne modifie jamais un résultat ou une validation ;
 - les résultats, validations et journaux d'audit sont append-only.
 
+## Expéditions et PDF — FC-8
+
+FC-8 étend le domaine avec :
+
+- l'archivage privé et versionné des PDF d'OF, bons de livraison et listes de colisage ;
+- la preuve persistée de libération qualité `work_order_quality_releases` ;
+- les expéditions, lignes, colis et répartitions, sans réservation à la préparation ;
+- la validation atomique, la réservation des quantités, le départ et l'annulation contrôlée ;
+- le workflow documentaire P7, append-only, au niveau OF + document + version.
+
+Le détail fonctionnel et l'exploitation sont dans [FC-8-OPERATIONS.md](FC-8-OPERATIONS.md).
+
 ## Administration Filament
 
 Ressources disponibles dans le panneau `/admin` :

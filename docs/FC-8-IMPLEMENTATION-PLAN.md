@@ -1688,6 +1688,54 @@ php artisan test --filter=Shipment
 php artisan test tests/Feature/WorkOrderClosureTest.php
 ```
 
+## 14. Journal d'implémentation — Lot 3
+
+Le détail fonctionnel et les écarts sont consignés dans `docs/FC-8-TECHNICAL-DESIGN.md`, §18.
+
+### 14.1 Livré
+
+- preuve qualité persistée `work_order_quality_releases` + service + Policy + intégration PDF + audit ;
+- re-libération historique explicite pour les OF terminés sans preuve ;
+- expéditions et colisage de préparation : `shipments`, `shipment_packages`, `shipment_lines`, `shipment_package_lines`, `shipment_sequences`, `shipment_audit_logs` ;
+- FK différée `generated_documents.shipment_id` ;
+- services de numérotation, préparation, colisage, quantités et audit ;
+- Policies et interfaces Filament admin/atelier ;
+- tests SQLite, MySQL de concurrence et tests Filament.
+
+### 14.2 Décision D-6
+
+Accès global aux PDF conservé par rôle. Aucune affectation individuelle aux OF n'est introduite.
+
+### 14.3 Volontairement hors Lot 3
+
+Validation, réservation, départ, annulation définitive, BL/liste de colisage, documents sources d'expédition et revues documentaires : Lot 4.
+
+> **Mise à jour Lot 5 :** ces éléments ont été livrés au Lot 4. Voir le §15.
+
+---
+
+## 15. Journal d'implémentation — Lots 4 et 5
+
+### 15.1 Livré au Lot 4
+
+- validation d'expédition, réservation des quantités et génération du BL/liste de colisage ;
+- départ avec observation facultative, annulation contrôlée et libération des réservations ;
+- preuve qualité de phase `shipment` et visa PDF ;
+- workflow documentaire P7 et décision append-only ;
+- verrouillage documentaire D-1 et audit durable D-2.
+
+### 15.2 Livré au Lot 5
+
+- `tests/Feature/Fc8IntegrationTest.php` : parcours transversal OF → PDF → validation → départ ;
+- `tests/Feature/Fc8SecurityTest.php` : rôles, routes privées, IDOR, P7 hors périmètre, immutabilité ;
+- tests UI des statuts d'audit et du blocage P7 ;
+- exécution PHP 8.4.27 ;
+- `docs/FC-8-OPERATIONS.md` et `docs/FC-8-DELIVERY-CHECKLIST.md`.
+
+### 15.3 Limites
+
+Voir le §19.4 de `FC-8-TECHNICAL-DESIGN.md` et le §7 de `FC-8-OPERATIONS.md`.
+
 ---
 
 **Fin du document.**

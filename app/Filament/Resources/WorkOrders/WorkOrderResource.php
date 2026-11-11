@@ -9,10 +9,13 @@ use App\Filament\Resources\WorkOrders\Pages\EditWorkOrder;
 use App\Filament\Resources\WorkOrders\Pages\ListWorkOrders;
 use App\Filament\Resources\WorkOrders\Pages\ViewWorkOrder;
 use App\Filament\Resources\WorkOrders\RelationManagers\BomImportsRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\GeneratedDocumentsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\ItemsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\NonConformitiesRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\QualityControlsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\QualityDeviationsRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\QualityReleasesRelationManager;
+use App\Filament\Resources\WorkOrders\RelationManagers\ShipmentsRelationManager;
 use App\Filament\Resources\WorkOrders\RelationManagers\WorkOrderOperationsRelationManager;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderForm;
 use App\Filament\Resources\WorkOrders\Schemas\WorkOrderInfolist;
@@ -76,7 +79,10 @@ class WorkOrderResource extends Resource
         return [
             WorkOrderOperationsRelationManager::class,
             ItemsRelationManager::class,
+            GeneratedDocumentsRelationManager::class,
+            ShipmentsRelationManager::class,
             QualityControlsRelationManager::class,
+            QualityReleasesRelationManager::class,
             NonConformitiesRelationManager::class,
             QualityDeviationsRelationManager::class,
             BomImportsRelationManager::class,

@@ -67,6 +67,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Version des règles de libération qualité
+    |--------------------------------------------------------------------------
+    |
+    | Copiée dans chaque preuve work_order_quality_releases afin de pouvoir
+    | interpréter ultérieurement l'instantané d'éligibilité.
+    |
+    */
+
+    'rules_version' => env('QUALITY_RULES_VERSION', '1'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Dérogations qualité
     |--------------------------------------------------------------------------
     */

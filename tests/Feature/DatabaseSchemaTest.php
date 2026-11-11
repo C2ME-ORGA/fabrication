@@ -101,4 +101,49 @@ class DatabaseSchemaTest extends TestCase
             ->contains(fn (array $index): bool => $index['unique'] && $index['columns'] === ['number']);
         $this->assertTrue($uniqueNumber, "Le numéro d'OF doit être unique en base.");
     }
+
+    public function test_quality_release_and_shipment_schema_is_present(): void
+    {
+        foreach ([
+            'work_order_quality_releases',
+            'shipment_sequences',
+            'shipments',
+            'shipment_packages',
+            'shipment_lines',
+            'shipment_package_lines',
+            'shipment_audit_logs',
+        ] as $table) {
+            $this->assertTrue(Schema::hasTable($table), "La table {$table} est absente.");
+        }
+
+        foreach ([
+            'eligible',
+            'requirements_present',
+            'eligibility_snapshot',
+            'snapshot_hash',
+            'rules_version',
+            'reason',
+        ] as $column) {
+            $this->assertTrue(
+                Schema::hasColumn('work_order_quality_releases', $column),
+                "La colonne work_order_quality_releases.{$column} est absente.",
+            );
+        }
+
+        $shipmentUnique = collect(Schema::getIndexes('shipments'))
+            ->contains(fn (array $index): bool => $index['unique'] && $index['columns'] === ['number']);
+        $this->assertTrue($shipmentUnique, 'Le numéro d\'expédition doit être unique en base.');
+
+        $packageUnique = collect(Schema::getIndexes('shipment_packages'))
+            ->contains(fn (array $index): bool => $index['unique'] && $index['columns'] === ['shipment_id', 'code']);
+        $this->assertTrue($packageUnique, 'Le code de colis doit être unique par expédition.');
+
+        $lineUnique = collect(Schema::getIndexes('shipment_lines'))
+            ->contains(fn (array $index): bool => $index['unique'] && $index['columns'] === ['shipment_id', 'work_order_item_id']);
+        $this->assertTrue($lineUnique, 'Une seule ligne par repère et par expédition.');
+
+        $generatedDocumentForeignKey = collect(Schema::getForeignKeys('generated_documents'))
+            ->contains(fn (array $key): bool => in_array('shipment_id', $key['columns'], true));
+        $this->assertTrue($generatedDocumentForeignKey, 'La FK generated_documents.shipment_id doit exister.');
+    }
 }

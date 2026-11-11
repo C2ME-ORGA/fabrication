@@ -3019,6 +3019,125 @@ vendor/bin/phpunit -c phpunit.mysql.xml tests/Feature/GeneratedDocumentConcurren
 | Valider le rôle décisionnaire des revues documentaires, l'obligation éventuelle de refresh et le cas des OF `completed`/`cancelled` | Qualité + métier | Lot 4 |
 | Valider la politique de rétention PDF | Métier + technique | Lot 5 |
 
+## 18. Journal d'implémentation — Lot 3
+
+### 18.1 Décision D-6 confirmée
+
+La décision métier D-6 est confirmée : les responsables atelier et qualité conservent un accès global aux PDF selon leurs rôles et les Policies existantes. Aucune affectation individuelle aux OF n'est ajoutée. `WorkOrderPolicy::viewPdf()` et `WorkOrder::isAccessibleBy()` restent inchangés.
+
+### 18.2 Preuve de libération qualité — implémentée
+
+Réalisé :
+
+- table `work_order_quality_releases` (append-only, index `(work_order_id, released_at)`) ;
+- modèle `WorkOrderQualityRelease` avec protection technique contre `update` et `delete` ;
+- enums `QualityReleasePhase` (`closure`, `historical_review`) et `QualityReleaseReason` (`completion`, `re_release`, `historical_review`) ;
+- `WorkOrderQualityReleaseService` qui réutilise `QualityClosureEligibilityService` sans dupliquer les règles FC-6/FC-7 ;
+- écriture automatique de la preuve dans la transaction de passage à `completed` ;
+- revue historique explicite (`recordHistoricalReview`) avec motif obligatoire, réservée à l'administrateur ou au responsable qualité (`WorkOrderPolicy::releaseQuality`) ;
+- `DatabaseWorkOrderQualityReleaseSource` remplace `NullWorkOrderQualityReleaseSource` dans le conteneur ;
+- visa Qualité du PDF calculé uniquement depuis la dernière preuve persistée et éligible ;
+- audit dans `quality_audit_logs` (`quality_release_recorded`) et `work_order_audit_logs` (`quality_released`) ;
+- action Filament « Libérer la qualité » sur un OF terminé sans preuve, et historique des libérations sur la fiche OF.
+
+Garanties :
+
+- aucune preuve n'est créée depuis un audit, une migration, un seeder ou un backfill ;
+- une preuve existante n'est jamais mise à jour ni supprimée ;
+- plusieurs libérations ajoutent des lignes successives ;
+- la dernière preuve non éligible supprime le visa (aucun repli sur une preuve antérieure).
+
+### 18.3 Expéditions et colisage — préparation implémentée
+
+Réalisé :
+
+- tables `shipment_sequences`, `shipments`, `shipment_packages`, `shipment_lines`, `shipment_package_lines` et `shipment_audit_logs` ;
+- clé étrangère différée `generated_documents.shipment_id` vers `shipments` ;
+- enums `ShipmentStatus`, `ShipmentPackageType`, `ShipmentAuditEvent` ;
+- modèles `Shipment`, `ShipmentPackage`, `ShipmentLine`, `ShipmentPackageLine`, `ShipmentAuditLog`, `ShipmentSequence` ;
+- `ShipmentNumberGenerator` (`EXP-AAAA-NNNN`, compteur annuel verrouillé) ;
+- `ShipmentService` : création, en-tête, lignes, préparation, réouverture ;
+- `ShipmentPackagingService` : colis, répartition, retrait, contrôle de colisage complet ;
+- `ShipmentQuantityGuard` : cumuls informatifs préparés, validés, expédiés, disponibles et restants ;
+- `ShipmentAuditService` et journal append-only ;
+- Policies `ShipmentPolicy`, `ShipmentPackagePolicy`, `ShipmentLinePolicy` ;
+- ressource Filament `ShipmentResource` (admin et atelier), relation managers lignes/colis/audit, et onglet Expéditions sur la fiche OF.
+
+Règles effectivement appliquées :
+
+- plusieurs expéditions par OF, plusieurs colis par expédition, plusieurs pièces par colis, pièce répartie sur plusieurs colis ;
+- la préparation ne réserve aucune quantité et ne modifie pas les quantités expédiées ;
+- la préparation ne clôture jamais l'OF ;
+- les quantités préparées et restantes sont calculées depuis les données persistées ;
+- une quantité colisée ne dépasse jamais la quantité préparée de la ligne ;
+- une ligne ne peut pas descendre sous la quantité déjà colisée ;
+- les colis et lignes d'une répartition appartiennent à la même expédition ;
+- les codes de colis sont uniques par expédition ;
+- seuls les statuts `draft` et `prepared` sont activés ; `validated`, `shipped` et `cancelled` existent dans l'enum mais ne sont exposés par aucune action.
+
+### 18.4 Écarts assumés par rapport au plan initial
+
+1. **Aucune limite définitive de quantité à la préparation.** Le Lot 3 autorise une préparation supérieure à la quantité acceptée, conformément à la consigne du lot. `ShipmentQuantityGuard` expose les cumuls pour le Lot 4, qui réalisera la réservation et le contrôle cumulatif.
+2. **`assertCompleteForValidation()` est implémenté mais non appelé.** Il servira au Lot 4 ; aucune validation d'expédition n'est exposée au Lot 3.
+3. **`shipment_documents`, `shipment_document_reviews` et les documents sources ne sont pas implémentés.** Ils relèvent des tâches 3.11 et 4.6/4.7 et ne sont pas nécessaires à la préparation demandée.
+4. **`shipment_audit_logs` a été ajoutée** pour satisfaire l'exigence d'audit du Lot 3, conformément au §5.11.
+5. **Noms d'index MySQL raccourcis** lorsque le nom généré dépassait la limite de 64 caractères (contrainte d'unicité de `shipment_package_lines`).
+
+### 18.5 Reste explicitement au Lot 4
+
+- validation définitive de l'expédition et réservation des quantités ;
+- contrôle qualité de phase `shipment` et réévaluation FC-7 ;
+- départ, annulation définitive et suivi ;
+- génération et archivage des BL et listes de colisage ;
+- documents sources d'expédition et décisions documentaires ;
+- actions Filament de validation, départ et annulation.
+
+> **Mise à jour Lot 5 :** cette liste a été livrée au Lot 4. Voir le §19.
+
+---
+
+## 19. Journal d'implémentation — Lots 4 et 5
+
+Cette section complète le §18. Elle consigne l'état effectivement livré et remplace les mentions « reste au Lot 4 » du §18.5.
+
+### 19.1 Lot 4 — validation, départ et P7
+
+Réalisé :
+
+- `ShipmentValidationService` : contrôle qualité `shipment`, colisage complet, cumuls, verrouillage OF → pièces → expédition → lignes/colis, réservation et génération du BL et de la liste de colisage ;
+- `ShipmentPrintService`, modèles Blade et archivage privé des deux PDF ;
+- `ShipmentService::ship()` avec observation facultative, audit et recalcul des quantités expédiées ;
+- `ShipmentService::cancel()` avec motif, annulation des documents générés et libération des réservations ;
+- `shipment_document_reviews` : décision P7 append-only au niveau OF + document + version ;
+- `ShipmentDocumentService` : détection des révisions applicables, décisions `no_impact`/`reviewed`/`blocked`, contrôles avant validation et départ ;
+- interface Filament de revue P7, téléchargement documentaire qualité et audit ;
+- tests SQLite, MySQL et Filament.
+
+### 19.2 Corrections D-1 et D-2
+
+- **D-1** : verrouillage des documents applicables par `DocumentLockingService` avant relecture des versions, dans l'ordre OF → Job → Documents (ID croissant). L'approbation documentaire verrouille le même Document ; une nouvelle version ne peut plus être approuvée entre le contrôle P7 et le commit.
+- **D-2** : `ShipmentValidationRefusalRecorder` écrit un journal JSONL append-only hors transaction, avec `attempt_id`, `flock`, `fflush` et `fsync`. Le miroir SQL `validation_refused` reste en meilleur effort ; un rollback externe peut l'annuler, le fichier reste la preuve durable.
+
+### 19.3 Lot 5 — intégration et préparation de livraison
+
+Réalisé :
+
+- test transversal `Fc8IntegrationTest` : OF → PDF → qualité → préparation → validation → BL/liste de colisage → départ ;
+- tests de sécurité `Fc8SecurityTest` : matrice des rôles, routes privées, IDOR, décision P7 hors périmètre, immutabilité, appels directs aux services ;
+- test d'interface des statuts d'audit lisibles et du blocage P7 visible ;
+- vérification du journal JSONL : disque privé, repli en cas d'échec, confidentialité ;
+- exécution des suites ciblées sous PHP 8.4.27 et PHP 8.5.12 ;
+- documentation d'exploitation `docs/FC-8-OPERATIONS.md` et checklist `docs/FC-8-DELIVERY-CHECKLIST.md`.
+
+### 19.4 Limites maintenues
+
+- les tests MySQL de verrouillage utilisent une seconde connexion `FOR UPDATE NOWAIT` ; ils ne constituent pas un test multiprocessus réel ;
+- PHP 8.4.27 est testé ; le minimum de production est 8.4.1 ;
+- le journal JSONL est local au serveur ;
+- la table `shipment_documents` n'est pas créée ; le contrôle de présence de documents obligatoires reste à définir ;
+- la décision P7 est au niveau OF, pas par expédition ;
+- l'accès documentaire atelier/qualité reste global par rôle (D-6).
+
 ---
 
 **Fin du document.**

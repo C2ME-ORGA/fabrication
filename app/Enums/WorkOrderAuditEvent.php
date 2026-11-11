@@ -30,6 +30,9 @@ enum WorkOrderAuditEvent: string implements HasLabel
     case ItemStatusChanged = 'item_status_changed';
     case BomImported = 'bom_imported';
     case QualityClosureBlocked = 'quality_closure_blocked';
+    case QualityReleased = 'quality_released';
+    case DocumentReviewDecided = 'document_review_decided';
+    case PdfGenerated = 'pdf_generated';
 
     public function getLabel(): string
     {
@@ -52,6 +55,9 @@ enum WorkOrderAuditEvent: string implements HasLabel
             self::ItemStatusChanged => 'Changement d\'état d\'une pièce',
             self::BomImported => 'Import de nomenclature',
             self::QualityClosureBlocked => 'Libération ou clôture bloquée pour motif qualité',
+            self::QualityReleased => 'Libération qualité enregistrée',
+            self::DocumentReviewDecided => 'Décision de revue documentaire',
+            self::PdfGenerated => 'Génération du PDF de l\'OF',
         };
     }
 }

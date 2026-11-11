@@ -56,6 +56,29 @@ return [
             'report' => false,
         ],
 
+        'generated_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/generated-documents'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
+         * Journal externe append-only des refus de validation. Il est
+         * volontairement séparé de la base : un rollback métier, y compris un
+         * rollback de transaction externe, ne peut pas l'annuler.
+         */
+        'shipment_audit' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/shipment-audit'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
